@@ -12,6 +12,7 @@ from PIL import Image
 import PIL.ImageOps
 import shutil
 import cv2
+from utils import verify_mask
 
 """
 Currate the ADE20K dataset to only contain image, mask, and meta data of
@@ -34,13 +35,12 @@ PERSON_SIZE_THRESH = 0.1
 
 def create_path_dir(ADE_DIR):
     """
-    Create dictionary with essential 
+    Create dictionary with essential
     img-relevant data paths.
     """
     print("Creating data path dictionary ...")
     data_path_dic = {}
     for root, dirs, files in os.walk(ADE_DIR):
-
         if len(dirs) > 0 and "ADE_train_" in dirs[0]:
             for dr in dirs:
                 img_dir = {}
@@ -103,7 +103,7 @@ def transform_mask(mask_img):
     return mask_img
 
 
-def filter_dataset(data_path_dic, PERSON_SIZE_THRESH):
+def filter_dataset(data_path_dic, PERSON_SIZE_THRESH=0.1):
     """
     Takes an image data dictionary, and returns
     a filtered version that only contains images
@@ -178,28 +178,47 @@ def filter_dataset(data_path_dic, PERSON_SIZE_THRESH):
 
 def filter_images(data_path_dic_people, FINAL_IMG_DIR):
     """
-    Transfers images & mask data of the images that 
+    Transfers images & mask data of the images that
     passed data filtration to a desired location.
     """
     print("Transfering final images ...")
     if not os.path.exists(FINAL_IMG_DIR):
         os.mkdir(FINAL_IMG_DIR)
 
-    for img in tqdm(data_path_dic_people.keys(), total=len(data_path_dic_people.keys())):
+    for img in tqdm(
+        data_path_dic_people.keys(), total=len(data_path_dic_people.keys())
+    ):
         img_data = data_path_dic_people[img]
         shutil.copy(img_data["image"], os.path.join(FINAL_IMG_DIR, img + ".jpg"))
         shutil.copy(img_data["segmentation"], os.path.join(FINAL_IMG_DIR, img + ".png"))
 
         try:
-            shutil.copytree(img_data["image"].replace(".jpg", ""), os.path.join(FINAL_IMG_DIR, img))
+            shutil.copytree(
+                img_data["image"].replace(".jpg", ""), os.path.join(FINAL_IMG_DIR, img)
+            )
         except:
             shutil.rmtree(os.path.join(FINAL_IMG_DIR, img))
-            shutil.copytree(img_data["image"].replace(".jpg", ""), os.path.join(FINAL_IMG_DIR, img))
+            shutil.copytree(
+                img_data["image"].replace(".jpg", ""), os.path.join(FINAL_IMG_DIR, img)
+            )
 
         img_data["image"] = os.path.join(FINAL_IMG_DIR, img + ".jpg")
         img_data["segmentation"] = os.path.join(FINAL_IMG_DIR, img + ".png")
 
     return data_path_dic_people
+
+
+def center_crop(im, new_size):
+    width, height = im.size  # Get dimensions
+
+    left = (width - new_size) / 2
+    top = (height - new_size) / 2
+    right = (width + new_size) / 2
+    bottom = (height + new_size) / 2
+
+    # Crop the center of the image
+    im = im.crop((left, top, right, bottom))
+    return im
 
 
 def scale_data(data_path_dic_people, IMG_DIR, IMG_OUT_DIR, size=256):
@@ -208,8 +227,9 @@ def scale_data(data_path_dic_people, IMG_DIR, IMG_OUT_DIR, size=256):
     destination Image & mask directory, and desired size
     of shortest image edge. Scales all images, masks, and
     polygon metadata to desired size, then saves in
-    destination directory. Returns new metadata dict. 
+    destination directory. Returns new metadata dict.
     """
+    print("Scaling and saving data ...")
 
     for img, img_data in tqdm(
         data_path_dic_people.items(), total=len(data_path_dic_people.items())
@@ -227,36 +247,10 @@ def scale_data(data_path_dic_people, IMG_DIR, IMG_OUT_DIR, size=256):
             w_new = size
         img_area = h_new * w_new
 
-        # scaling polygon metadata that describes object masks:
-        rmv_objs = []
-        for obj in img_data["metadata"]["object"]:
-            try:
-                coords = list(zip(obj["polygon"]["x"], obj["polygon"]["y"]))
-                polygon = Polygon(coords)
-                scaled_polygon = affinity.scale(polygon, xfact=scale_ratio, yfact=scale_ratio)
-                poly_mapped = mapping(scaled_polygon)
-                poly_coordinates = poly_mapped["coordinates"][0]
-
-                x_ = []
-                y_ = []
-                for (x, y) in poly_coordinates:
-                    x_.append(x)
-                    y_.append(y)
-
-                obj["polygon"]["x"] = x_
-                obj["polygon"]["y"] = y_
-                obj["area_ratio"] = compute_mask_area_ratio(obj, img_area)
-            except:
-                rmv_objs.append(obj)
-
-        # remove and objects and masks that could not be scaled:
-        img_data["metadata"]["object"] = [
-            x for x in img_data["metadata"]["object"] if x not in rmv_objs
-        ]
-
-        # scaling and saving images:
+        # cropping, scaling and saving images:
         image = Image.open(img_data["image"])
         image = image.resize((int(w_new), int(h_new)))
+        image = center_crop(image, size)
         new_img_path = os.path.join(IMG_OUT_DIR, img + ".jpg")
 
         # scaling and saving masks:
@@ -266,12 +260,54 @@ def scale_data(data_path_dic_people, IMG_DIR, IMG_OUT_DIR, size=256):
             os.mkdir(dest_mask_path)
 
         masks = [x for x in os.listdir(old_mask_path)]
+        preserved_masks = []
         for m in masks:
             mask_img = Image.open(os.path.join(old_mask_path, m))
             mask_img = mask_img.resize((int(w_new), int(h_new)))
+            mask_img = center_crop(mask_img, size)
             mask_img = transform_mask(mask_img)
             inverted_mask_img = PIL.ImageOps.invert(mask_img)
-            inverted_mask_img.save(os.path.join(dest_mask_path, m))
+
+            # verify that the mask was not cropped out:
+            ratio, mask_exists = verify_mask(inverted_mask_img, threshold=0.005)
+            if mask_exists:
+                inverted_mask_img.save(os.path.join(dest_mask_path, m))
+                preserved_masks.append(m)
+
+        # scaling polygon metadata that describes object masks:
+        rmv_objs = []
+        for obj in img_data["metadata"]["object"]:
+            mask_name = obj["instance_mask"][obj["instance_mask"].rfind("/") + 1 :]
+            if mask_name in preserved_masks:
+                try:
+                    coords = list(zip(obj["polygon"]["x"], obj["polygon"]["y"]))
+                    polygon = Polygon(coords)
+                    scaled_polygon = affinity.scale(
+                        polygon, xfact=scale_ratio, yfact=scale_ratio
+                    )
+                    poly_mapped = mapping(scaled_polygon)
+                    poly_coordinates = poly_mapped["coordinates"][0]
+
+                    x_ = []
+                    y_ = []
+                    for x, y in poly_coordinates:
+                        x_.append(x)
+                        y_.append(y)
+
+                    obj["polygon"]["x"] = x_
+                    obj["polygon"]["y"] = y_
+                    obj["area_ratio"] = compute_mask_area_ratio(obj, img_area)
+                except:
+                    rmv_objs.append(obj)
+
+        # remove and objects and masks that could not be scaled:
+        img_data["metadata"]["object"] = [
+            x
+            for x in img_data["metadata"]["object"]
+            if x not in rmv_objs
+            and x["instance_mask"][x["instance_mask"].rfind("/") + 1 :]
+            in preserved_masks
+        ]
 
         image.save(new_img_path)
         img_data["image"] = os.path.join(IMG_OUT_DIR, img + ".jpg")
@@ -280,7 +316,6 @@ def scale_data(data_path_dic_people, IMG_DIR, IMG_OUT_DIR, size=256):
 
 
 if __name__ == "__main__":
-
     data_path_dic = create_path_dir(ADE_DIR)
     data_path_dic_people = filter_dataset(data_path_dic, PERSON_SIZE_THRESH)
 
