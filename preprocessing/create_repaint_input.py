@@ -27,20 +27,20 @@ import random
 
 # TODO: There may be cases in which I would want to merge masks
 # However, this would only work for certain semantic categories ...
+MASKS_PER_IMAGE = 3
+DATA_DIR = "/data/jkruk3/Diffm_FakeImage_Dataset_5k"
+META_DATA = "/data/jkruk3/Diffm_FakeImage_Dataset_5k/img_masks_5k.json"
 
-DATA_DIR = "/data/jkruk3/ADE20K_People_256/"
-META_DATA = "/data/jkruk3/ADE20K_People_256/metadata.json"
-IMG_DIR = "/data/jkruk3/ADE20K_People_256/images"
+# DEST_META_DIR = "/nethome/jkruk3/how_fake/RePaint/data/datasets/ade20k_metadata"
+DEST_IMG_DIR = "/data/jkruk3/RePaint/input/images"
+DEST_MASK_DIR = "/data/jkruk3/RePaint/input/keep_masks"
 
-DEST_MASK_DIR = "/nethome/jkruk3/how_fake/RePaint/data/datasets/ade20k_keep_masks_d2"
-DEST_IMG_DIR = "/nethome/jkruk3/how_fake/RePaint/data/datasets/ade20k_images_d2"
-DEST_META_DIR = "/nethome/jkruk3/how_fake/RePaint/data/datasets/ade20k_metadata"
 if not os.path.exists(DEST_MASK_DIR):
     os.mkdir(DEST_MASK_DIR)
 if not os.path.exists(DEST_IMG_DIR):
     os.mkdir(DEST_IMG_DIR)
-if not os.path.exists(DEST_META_DIR):
-    os.mkdir(DEST_META_DIR)
+# if not os.path.exists(DEST_META_DIR):
+#     os.mkdir(DEST_META_DIR)
 
 
 # NOTE: Scheme for changing one masked object at a time:
@@ -85,39 +85,69 @@ def get_image_mask_pairs(data, elem, examples):
     return select
 
 
-# TODO: Scheme for changing multiple masked objects at once:
-#   - semantically similar objects
-#   - requires mask merging (pairwise addition on pixel values)
+def download_image_mask_pairs(data, batches=1):
+
+    all_pair_ids = []
+    processed_meta = {}
+    count = 0
+    for key, value in tqdm(data.items(), total=len(data)):
+
+        # this piece of code fixes a file_path error in metadata:
+        ORG_ROOT = "Diffm_FakeImage_Dataset"
+        NEW_ROOT = "Diffm_FakeImage_Dataset_5k"
+
+        img_path = value['image_path']
+        if ORG_ROOT in img_path:
+            img_path = img_path[img_path.find('/')+1:]
+        value['image_path'] = img_path
+        
+        root_img = Image.open(os.path.join(DATA_DIR, img_path))
+        for obj in value["objects"]:
+
+            # this piece of code fixes a file_path error in metadata:
+            mask_path = obj["mask_path"]
+            if ORG_ROOT in mask_path:
+                mask_path = mask_path[mask_path.find('/')+1:]
+            obj['mask_path'] = mask_path
+
+            # saving image-mask pairs for inpaint model input
+            pair_name = str(count).zfill(5)
+            obj['inpaint_id'] = pair_name
+            mask_img = Image.open(os.path.join(DATA_DIR, mask_path))
+
+            if batches > 1:
+                files_per_batch = int((len(data)* MASKS_PER_IMAGE) / batches) + 1
+                batch_num = int(count / files_per_batch)
+                BATCH_DIR = f"batch_{batch_num}"
+                if not os.path.exists(os.path.join(DEST_MASK_DIR, BATCH_DIR)):
+                    os.mkdir(os.path.join(DEST_MASK_DIR, BATCH_DIR))
+                if not os.path.exists(os.path.join(DEST_IMG_DIR, BATCH_DIR)):
+                    os.mkdir(os.path.join(DEST_IMG_DIR, BATCH_DIR))
+
+                mask_img.save(os.path.join(DEST_MASK_DIR, BATCH_DIR, f"{pair_name}.png"))
+                root_img.save(os.path.join(DEST_IMG_DIR, BATCH_DIR, f"{pair_name}.png"))
+            else:
+                mask_img.save(os.path.join(DEST_MASK_DIR, f"{pair_name}.png"))
+                root_img.save(os.path.join(DEST_IMG_DIR, f"{pair_name}.png"))
+
+            all_pair_ids.append(pair_name)
+            count += 1
+        
+        processed_meta[key] = value
+    return processed_meta, all_pair_ids
+
 
 if __name__ == "__main__":
 
-    # FOR DEMO: generate a few examples with masked items:
-    #   - person
-    #   - head
-    #   - car
-    #   - window
-    #   - wall
-    #   - tree
-
     with open(META_DATA, "r") as jf:
         data = json.load(jf)
+    
+    processed_meta, all_pair_ids = download_image_mask_pairs(
+        data, 
+        batches=10)
+    
+    with open(META_DATA, "w") as jf:
+        json.dump(processed_meta, jf)
 
-    all_elements = []
-    for _, value in data.items():
-        all_elements = list(set(all_elements + value["elements"]))
-    ipdb.set_trace()
-
-    # elements = ["person", "head", "car", "window", "wall", "tree"]
-    elements = ["left arm", "right leg", "face", "hand", "wall", "plants", "river", "blackboard"]
-    examples = 3
-
-    select = []
-    for elem in elements:
-        select_ = get_image_mask_pairs(data, elem, examples)
-        select = select + select_
-
-    print(len(select))
-    meta_path = os.path.join(DEST_META_DIR, "demo_metadata_v1.json")
-    with open(meta_path, "w") as outfile:
-        json.dump(select, outfile)
+    print(f"{len(all_pair_ids)} image-mask pairs prepared for inpainting at:   {DEST_IMG_DIR[:DEST_IMG_DIR.rfind('/')]}")    
 

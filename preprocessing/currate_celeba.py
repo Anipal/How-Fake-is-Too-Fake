@@ -1,24 +1,20 @@
 import os
 import numpy as np
 import pandas as pd
-import datasets
 from datasets import load_dataset
-from tqdm.notebook import tqdm
-import transformers
+from tqdm import tqdm
 from PIL import Image, ImageOps
 import ipdb
 import json
 
 
 # [ADJUST] Output file specifications:
-CELEB_IMG_DIR = "/content/drive/MyDrive/celebahq_masks/CelebAMask-HQ/CelebA-HQ-img"
-CELEB_MASK_DIR = (
-    "/content/drive/MyDrive/celebahq_masks/CelebAMask-HQ/CelebAMask-HQ-mask-anno"
-)
+CELEB_IMG_DIR = "/data/jkruk3/CelebAMask-HQ/CelebA-HQ-img"
+CELEB_MASK_DIR = "/data/jkruk3/CelebAMask-HQ/CelebAMask-HQ-mask-anno"
 
-OUTPUT_DIR = "/content/drive/MyDrive/CelebAHQ_256"
-IMG_DIR = "/content/drive/MyDrive/CelebAHQ_256/images"
-MASK_DIR = "/content/drive/MyDrive/CelebAHQ_256/masks"
+OUTPUT_DIR = "/data/jkruk3/CelebAHQ_256"
+IMG_DIR = "/data/jkruk3/CelebAHQ_256/images"
+MASK_DIR = "/data/jkruk3/CelebAHQ_256/masks"
 dest_size = 256
 
 
