@@ -1,0 +1,2 @@
+#!/bin/bash
+python3 ../train.py --task 'training' --exp '1' --nclass 2 --data_split 'Helen' --backbone 'resnet50' --dataset 'custom' --loss-type 'ce' --epochs 20 --batch-size 4 --test-batch-size 1 --pre --root_csv '/srv/hoffman-lab/share4/apal72/half-truths/csvs/consolidated_meta.csv' --root_dir '/srv/hoffman-lab/share4/apal72/half-truths/data/'
