@@ -7,3 +7,9 @@
 [submodule "detectors/DIRE"]
 	path = detectors/DIRE
 	url = https://github.com/ZhendongWang6/DIRE.git
+[submodule "detectors/detectors/De-Fake"]
+	path = detectors/detectors/De-Fake
+	url = https://github.com/zeyangsha/De-Fake.git
+[submodule "detectors/De-Fake"]
+	path = detectors/De-Fake
+	url = https://github.com/zeyangsha/De-Fake.git
