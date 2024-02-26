@@ -1,0 +1,9 @@
+[submodule "detector"]
+	path = detector
+	url = https://github.com/PeterWang512/CNNDetection.git
+[submodule "detectors/CNNDetection"]
+	path = detectors/CNNDetection
+	url = https://github.com/PeterWang512/CNNDetection.git
+[submodule "detectors/DIRE"]
+	path = detectors/DIRE
+	url = https://github.com/ZhendongWang6/DIRE.git
