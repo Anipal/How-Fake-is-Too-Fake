@@ -11,7 +11,7 @@ import torchvision.transforms.functional as TF
 from PIL import Image
 from tqdm import tqdm
 
-from DIRE_zp.utils.utils import get_network, str2bool, to_cuda
+from DIRE.utils.utils import get_network, str2bool, to_cuda
 from CNNDetection.networks.resnet import resnet50
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -19,12 +19,15 @@ parser.add_argument(
     "-f", "--file", default="data/consolidated_meta_no_helen.csv", type=str, help="path to csv of image metadata"
 )
 parser.add_argument(
+    "-r", "--root_dir", default=".data/", type=str, help="path to csv of image metadata"
+)
+parser.add_argument(
     "-m",
     "--model_path",
     type=str,
-    default="CNNDetection/weights/blur_jpg_prob0.1.pth",
+    default="../../detectors/CNNDetection/weights/blur_jpg_prob0.1.pth",
 )
-parser.add_argument("--use_cpu", action="store_true", help="uses gpu by default, turn on to use cpu")
+# parser.add_argument("--use_cpu", action="store_true", help="uses gpu by default, turn on to use cpu")
 parser.add_argument("--arch", type=str, default="resnet50")
 parser.add_argument("--aug_norm", type=str2bool, default=True)
 parser.add_argument("--model", type=str, default="dire", help="argsions: dire, cnnspot, defake")
@@ -40,7 +43,7 @@ if os.path.isfile(args.file):
     df = pd.read_csv(args.file)
     file_list = []
     file_list = df['image_path'].tolist()[:]
-    file_list = ['./data/' + path for path in file_list]
+    file_list = [args.root_dir + path for path in file_list]
 
 trans = transforms.Compose(
     (
@@ -64,13 +67,13 @@ elif args.model == "dire":
     model = get_network(args.arch)
 
 if args.model_path is not None:
-    state_dict = torch.load(args.model_path, map_location="cpu")
+    state_dict = torch.load(args.model_path, map_location=device)
     if "model" in state_dict:
         state_dict = state_dict["model"]
     model.load_state_dict(state_dict)
 model.eval()
-# if torch.cuda.is_available:
-#     model.cuda()
+if torch.cuda.is_available:
+    model.cuda()
 
 for img_path in tqdm(file_list, dynamic_ncols=True, disable=len(file_list) <= 1):
     if os.path.exists(img_path):
