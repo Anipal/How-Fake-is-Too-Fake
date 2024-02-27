@@ -13,3 +13,6 @@
 [submodule "detectors/De-Fake"]
 	path = detectors/De-Fake
 	url = https://github.com/zeyangsha/De-Fake.git
+[submodule "detectors/pytorch-grad-cam"]
+	path = detectors/pytorch-grad-cam
+	url = https://github.com/jacobgil/pytorch-grad-cam.git
