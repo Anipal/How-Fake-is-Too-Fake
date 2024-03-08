@@ -1,5 +1,8 @@
 import argparse
 import torch
+import sys
+
+sys.path.append("/nethome/jkruk3/how_fake/How-Fake-is-Too-Fake/llava_weights")
 
 from llava.constants import (
     IMAGE_TOKEN_INDEX,
@@ -9,7 +12,10 @@ from llava.constants import (
     IMAGE_PLACEHOLDER,
 )
 from llava.conversation import conv_templates, SeparatorStyle
+
 from llava.model.builder import load_pretrained_model
+
+# from builder import load_pretrained_model
 from llava.utils import disable_torch_init
 from llava.mm_utils import (
     process_images,
@@ -54,10 +60,12 @@ def eval_model(args):
     # model_name = get_model_name_from_path(args.model_path)
     model_name = "LlavaLlamaForCausalLM"
     tokenizer, model, image_processor, context_len = load_pretrained_model(
-        args.model_path, args.model_base, model_name , cache_dir = "/raid/mphute6/cache"
+        args.model_path,
+        args.model_base,
+        model_name,
+        cache_dir="/nethome/jkruk3/how_fake/llava_cache_dir",
     )
 
-    
     qs = args.query
     image_token_se = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN
     if IMAGE_PLACEHOLDER in qs:
@@ -101,11 +109,9 @@ def eval_model(args):
     image_files = image_parser(args)
     images = load_images(image_files)
     image_sizes = [x.size for x in images]
-    images_tensor = process_images(
-        images,
-        image_processor,
-        model.config
-    ).to(model.device, dtype=torch.float16)
+    images_tensor = process_images(images, image_processor, model.config).to(
+        model.device, dtype=torch.float16
+    )
 
     input_ids = (
         tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt")
@@ -129,10 +135,14 @@ def eval_model(args):
     outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
     print(outputs)
 
+
 def load_model(args):
     model_name = "LlavaLlamaForCausalLM"
     tokenizer, model, image_processor, context_len = load_pretrained_model(
-        args.model_path, args.model_base, model_name , cache_dir = "/raid/mphute6/cache"
+        args.model_path,
+        args.model_base,
+        model_name,
+        cache_dir="/nethome/jkruk3/how_fake/llava_cache_dir",
     )
     return tokenizer, model, image_processor, context_len
 
@@ -191,13 +201,10 @@ def eval_model_wo_loading(tokenizer, model, image_processor, context_len, args):
     image_files = image_parser(args)
     images = load_images(image_files)
     image_sizes = [x.size for x in images]
-    images_tensor = process_images(
-        images,
-        image_processor,
-        model.config
-    ).to(model.device, dtype=torch.float16)
+    images_tensor = process_images(images, image_processor, model.config).to(
+        model.device, dtype=torch.float16
+    )
 
-    
     input_ids = (
         tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt")
         .unsqueeze(0)
@@ -236,4 +243,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     eval_model(args)
-
