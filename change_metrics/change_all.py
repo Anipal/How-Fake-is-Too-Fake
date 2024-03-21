@@ -55,7 +55,7 @@ def calc_ssim(real,fake):
 
 def calc_mse(real, fake):
     if(len(real.shape) == 3):
-        mse = np.linalg.norm(real - fake, axis=2)
+        # mse = np.linalg.norm(real - fake, axis=2)
         mse = np.square(real[:,:,0].astype(np.float32) - fake[:,:,0].astype(np.float32)) + np.square(real[:,:,1].astype(np.float32) - fake[:,:,1].astype(np.float32))+np.square(real[:,:,2].astype(np.float32) - fake[:,:,2].astype(np.float32))
         mse = mse / (255*255*3)
     else:
