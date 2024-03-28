@@ -3,84 +3,46 @@ import json
 import tempfile
 from accelerate.logging import get_logger
 from sentence_transformers import SentenceTransformer, util
+from transformers import LlamaForCausalLM, LlamaTokenizer
+import transformers
 import argparse
 import difflib
 import re
 import random
 import pdb
-from lance.utils.misc_utils import *
+import torch
+# from lance.utils.misc_utils import *
 torch.set_float32_matmul_precision("medium")
 logger = get_logger("lance")
 
-sys.path.append('/srv/hoffman-lab/share4/apal72/half-truths')
-sys.path.append('/srv/hoffman-lab/share4/apal72/half-truths/LLaVA')
-sys.path.append('/srv/hoffman-lab/share4/apal72/half-truths/LLaVA/llava/')
+sys.path.append('/raid/mphute6/HalfTruths')
+sys.path.append('/raid/mphute6/HalfTruthsLLaVA')
+sys.path.append('/raid/mphute6/HalfTruths/LLaVA/llava/')
 
 from llava.eval.run_llava import eval_model ,load_model, eval_model_wo_loading
 
 LLAVA_PATH = "liuhaotian/llava-v1.6-mistral-7b"
 CACHE_DIR = "cache"
 
-
-# context = """
-# Semantic change in images refers to alterations in meaning or interpretation. Here's how you might describe small, medium, and large semantic changes to an image:
-
-# 1. Small Semantic Change: Could be something like changing the color of a specific object, or adding or removing a minor detail, adjusting the composition or perspective of the image, or changing the distance or angle with which the image is taken, or slightly adjusting the color distribution of the image. This change would not significantly alter the overall meaning or context of the image.
-# 2. Medium Semantic Change: Could involve moving an object or person to a different location within the frame, or changing the emotions of the people in the frame. Involves more noticeable alterations that can shift the focus or narrative of the image.
-# 3. Large Semantic Change: This could include adding or removing major elements of the image, such as people, objects, or landmarks. Involves substantial modifications that fundamentally transform the interpretation or message conveyed by the image. It may even appear surprising or strange to an audience. 
-
-# Using the definitions of small, medium , and large semantic changes above,"""
-
 context = """
 Semantic change in images refers to alterations in meaning or interpretation. Here's how you might describe small, medium, and large semantic changes to an image:
 
 1. Small Semantic Change: Could be something like changing the color of a specific object, adding or removing a minor detail, adjusting the composition or perspective of the image, or slightly adjusting the color distribution of the image. This change would not significantly alter the overall meaning or context of the image.
-2. Medium Semantic Change: Could involve minor changes to object or setting characteristics, alterating a background element, moving an object or person to a different location within the frame, or changing the emotions of the people in the frame. This change could slightly alter the way the viewer perceives the image and its subject matter.
-3. Large Semantic Change: This could include altering, adding or removing major elements of the image, such as people, objects, and landmarks, or making fundamental changes to the image's color scheme, lighting, or other visual elements. Involves substantial modifications that fundamentally transform the interpretation or message conveyed by the image. It may even appear suprising or strange to an audience.
+2. Medium Semantic Change: Could involve minor changes to object or setting characteristics, altering a background element, moving an object or person to another location within the frame, or changing the emotions of the people in the frame. This change could slightly alter the way the viewer perceives the image and its subject matter.
+3. Large Semantic Change: This could include altering, adding or removing major elements of the image, such as people, objects, and landmarks, or making fundamental changes to the image's color scheme, lighting, or other visual elements. Involves substantial modifications that fundamentally transform the interpretation or message conveyed by the image. It can appear surprising or strange to an audience.
 
-Using the definitions of small, medium, and large semantic changes above, """
+Using the definitions of small, medium, and large semantic changes above. """
 
-# context = """
-# Semantic change in images refers to alterations in meaning or interpretation. Here's how you might describe small, medium, and large semantic changes to an image:
+tokenizer_llama = LlamaTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
+model_llama = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
 
-# 1. Small Semantic Change: Could be something like changing the color of a specific object, or adding or removing a minor detail, adjusting the composition or perspective of the image, or changing the distance or angle with which the image is taken, or slightly adjusting the color distribution of the image. This change would not significantly alter the overall meaning or context of the image.
-# 2. Medium Semantic Change: Could involve moving an object or person to a different location within the frame, or changing the emotions of the people in the frame. Involves more noticeable alterations that can shift the focus or narrative of the image.
-# 3. Large Semantic Change: This could include adding or removing major elements of the image, such as people, objects, or landmarks, or making fundamental changes to the image's color scheme, lighting, or other visual elements. Involves substantial modifications that fundamentally transform the interpretation or message conveyed by the image. It may even appear surprising or strange to an audience.
-
-# Using the definitions of small, medium, and large semantic changes above,"""
-
-# output_struct = """
-
-# Return the captions in the format:
-# Original Caption:
-
-# Modified Caption 1:
-# Change 1:
-
-# Modified Caption 2:
-# Change 2:
-# """
-
-# context = """
-# Semantic change in images refers to alterations in meaning or interpretation. Here's how you might describe small, medium, and large semantic changes to an image:
-
-# 1. Small Semantic Change: Could be something like changing the color of a specific object, or adding or removing a minor detail, adjusting the composition or perspective of the image, or changing the distance or angle with which the image is taken, or slightly adjusting the color distribution of the image. This change would not significantly alter the overall meaning or context of the image.
-# 2. Large Semantic Change: This could include adding or removing major elements of the image, such as people, objects, or landmarks. Involves substantial modifications that fundamentally transform the interpretation or message conveyed by the image. It may even appear surprising or strange to an audience. 
-
-# Using the definitions of small, and large semantic changes above,"""
-
-# output_struct = """
-
-# Return the captions in the format:
-# Original Caption:
-
-# Modified Caption 1:
-# Change 1:
-
-# Modified Caption 2:
-# Change 2:
-# """
-
+pipeline = transformers.pipeline(
+            "text-generation",
+            tokenizer=tokenizer_llama,
+            model=model_llama,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
 
 class LlavaGenerate_Edit:
     def __init__(
@@ -119,10 +81,7 @@ class LlavaGenerate_Edit:
         self.tokenizer, self.model, self.image_processor, self.context_len = load_model(self.args)
         self.modified_caption_pattern = r'Modified Caption: (.+?)\n\n'
         self.original_caption_pattern = r'Original caption: (.+?)\n\n'
-        # self.sizes ={"large":"Large Semantic Change","medium":"Medium Semantic Change" ,"small":"Small Semantic Change"}
-        # self.sizes = {"small":"significantly and dramatically","large":"moderately and comparatively"}
         self.sizes = ["small","medium","large"]
-        # self.sizes = ["small","large"]
         self.semantic_change = SentenceTransformer(sentence_embedding_model)
         self.verbose = verbose
 
@@ -133,6 +92,19 @@ class LlavaGenerate_Edit:
         embeddings = self.semantic_change.encode(sentences)
         return embeddings
 
+    def get_llama_response(self, prompt_eng, pipeline, tokenizer):
+        instruction_prompt = prompt_eng
+        response = pipeline(
+        instruction_prompt,
+        do_sample=True,
+        top_k=1,
+        num_return_sequences=1,
+        eos_token_id=tokenizer.eos_token_id,
+        max_length=200,
+    )   
+        response_text = response[0]["generated_text"].split(":")[-1]
+        # pdb.set_trace()
+        return response_text
 
     def _compute_diff(self, cap1, cap2):
         """
@@ -200,7 +172,6 @@ class LlavaGenerate_Edit:
                 }
             )
         return perturbations_dict_list
-
     def generate_prompt_edits(self, og_cap, size):
 
         output_struct = f"""
@@ -213,59 +184,40 @@ class LlavaGenerate_Edit:
 
             {size} semantic change 3:
             Caption for changed image 3:
+
             """
-        prompt = context +  f" Given the original caption for the image is: {og_cap}. Make 3 {size} semantic change in the image."  + output_struct
-        # prompt = context +  f" Write a caption for the image. Make 3 large semantic change in the image. Give the caption for the changed image as well"
-        # prompt = context +  f"Write a detailed caption for the image. Give me 5 unique {size} changes I can make to the original caption." + output_struct
-        return prompt 
-    def generate_prompt_og(self):
-
-        # output_struct = f"""
-        #     Return the caption in the format:
-        #     Original Caption:
-        #     """
-        prompt = f" Given the image, write a short caption for the image. Do not give explanation and use not more than 30 words in the caption."
-        # prompt = context +  f" Write a caption for the image. Make 3 large semantic change in the image. Give the caption for the changed image as well"
-        # prompt = context +  f"Write a detailed caption for the image. Give me 5 unique {size} changes I can make to the original caption." + output_struct
+        prompt = context + f" Given the original caption for the image is: {og_cap}. Make 3 {size} semantic unique changes in the image, " + " The captions should be understandable in isolation to the original caption. Do not use relative descriptors" + output_struct
         return prompt
-
-    def check_caption(self,og):
-        # pdb.set_trace()
-        ai_chat ="A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's question"
-        sem_embed =  self.semantic_change.encode([og, ai_chat])
-        sim = util.pytorch_cos_sim(sem_embed[0],sem_embed[1]).numpy()[0][0]
-        # print(sim)
-        if(sim > 0.7):
-            return False
-        else:
-            return True
+     
+    def generate_prompt_og(self):
+        prompt = f" Given the image, write a short caption for the image in under 20 words."
+        return prompt
+    
+    def summarize_edited_caption(self, edited_cap):
+        prompt = f"Rephrase the following text to be a single sentence based on the changes introduced in the text: \n{edited_cap} "
+        return prompt
         
     def get_captions(self, image_file,perturbation_type='all'):
         perturbations = []
         edit_type = []
-        # pdb.set_trace()
         prompt_og = self.generate_prompt_og()
         setattr(self.args,"image_file", image_file) 
         setattr(self.args,"query",prompt_og) 
-        original_caption = eval_model_wo_loading(self.tokenizer, self.model, self.image_processor, self.context_len, self.args)
-        # lines = response_og.split('\n')
-        # try:
-        #     original_caption_index = lines.index('Original Caption:') + 1
-        # except:
-        #     original_caption_index = next(index for index, line in enumerate(lines) if line.startswith('Original Caption'))
-        #     # pdb.set_trace()
-        # original_caption = lines[original_caption_index].replace('Original Caption:', '').strip()
-        # pdb.set_trace()
+        original_caption_whole = eval_model_wo_loading(self.tokenizer, self.model, self.image_processor, self.context_len, self.args)
+        original_caption = original_caption_whole.split(".")[0]
+
         if perturbation_type == "all":
             perturbation_types = self.sizes
         else:
             perturbation_types = [perturbation_type]
-        
+        # print(f"INFO:  => Generated caption: {original_caption}")
         for perturbation_type in perturbation_types:
             modified_captions = []
+            modified_summarized_captions = []
         
             prompt_edit = self.generate_prompt_edits(original_caption,perturbation_type)
             setattr(self.args,"query",prompt_edit) 
+            # setattr(self.args,"image_file", "")
             responses = eval_model_wo_loading(self.tokenizer, self.model, self.image_processor, self.context_len, self.args)
             lines = responses.split('\n')
             for j, line in enumerate(lines):
@@ -278,50 +230,19 @@ class LlavaGenerate_Edit:
                             pdb.set_trace()
                     else:
                         modified_captions.append(line.split(':')[-1])
-            perturbations.extend(modified_captions)
-            edit_type.extend([perturbation_type]*len(modified_captions))
-
-            # for i in range(5):
-            #     responses = eval_model_wo_loading(self.tokenizer, self.model, self.image_processor, self.context_len, self.args)
-            #     # original_caption_match = re.search(r'Original Caption:\s+(.*?)\n', responses, re.DOTALL)
-            #     # original_caption[perturbation_type] = original_caption_match.group(1).strip()
-            #     lines = responses.split('\n')
                 
-            #     try:
-            #         original_caption_index = lines.index('Original Caption:') + 1
-            #     except:
-            #         original_caption_index = next(index for index, line in enumerate(lines) if line.startswith('Original Caption'))
-            #         # pdb.set_trace()
-            #     original_caption_1 = lines[original_caption_index].replace('Original Caption:', '').strip()
-            #     if(self.check_caption(original_caption_1)):
-            #         original_caption = original_caption_1
-            #         capture_changed_caption = False
-            #         for j, line in enumerate(lines):
-            #             line = line.strip()
-            #             if line.startswith('Caption for changed image'):
-            #                 if(line.split(':')[-1] == ""):
-            #                     try:
-            #                         modified_captions.append(lines[j+1].strip())
-            #                     except:
-            #                         pdb.set_trace()
-            #                 else:
-            #                     modified_captions.append(line.split(':')[-1])
-            #         # modified_captions = []
-            #         # for match in re.finditer(r'Modified Caption (\d+):(.*?)Change \1:(.*?)\n\n', responses, re.DOTALL):
-            #         #     caption_number = match.group(1)
-            #         #     modified_caption = match.group(2).strip() + match.group(3).strip()
-            #         #     modified_captions.append(modified_caption)
-
-            #         # original_caption = re.search(self.original_caption_pattern, responses).group(1)
-            #         # modified_caption = re.findall(self.modified_caption_pattern, responses)
-                    
-            #         perturbations.extend(modified_captions)
-            #         edit_type.extend([perturbation_type]*len(modified_captions))
-            #         break
-            #     else:
-            #         continue
-        # pdb.set_trace()    
-
+                    # summarize the modified caption and us ethat for compute instead
+                    sum_edcap_prompt = self.summarize_edited_caption(modified_captions[-1])
+                    setattr(self.args,"query",sum_edcap_prompt) 
+                    sum_edcap = self.get_llama_response(sum_edcap_prompt, pipeline, tokenizer_llama) 
+                    # pdb.set_trace()
+                    modified_summarized_captions.append(sum_edcap)
+            perturbations.extend(modified_summarized_captions)
+            edit_type.extend([perturbation_type]*len(modified_summarized_captions))
+                        
+            # perturbations.extend(modified_captions)
+            # edit_type.extend([perturbation_type]*len(modified_captions))
+            
         if (len(perturbations) == 0):
             perturbed_captions_dict_list = {"empty":"empty"}
             return "", perturbed_captions_dict_list
@@ -330,11 +251,11 @@ class LlavaGenerate_Edit:
         if self.verbose:
             for ix in range(min(len(perturbed_captions_dict_list), 10)):
                 ecap = perturbed_captions_dict_list[ix]["edited_caption"]
-                logger.info(f"{ix+1}: {ecap}\n")
-            logger.info(f"...\n")
+                print(f"INFO ({edit_type[ix]}) :  {ix+1}: {ecap}\n")
+            print(f"INFO: (end of image)...\n")
         if self.verbose:
-            logger.info(f"=> Generated caption: {original_caption}")
-        
+            print(f"INFO:  => Original caption: {original_caption}")
+            print("--------------------------------------------------------------")
         return original_caption, perturbed_captions_dict_list
 
 
