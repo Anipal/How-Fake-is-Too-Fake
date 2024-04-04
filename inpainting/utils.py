@@ -445,7 +445,7 @@ def get_llava_perts(
                 mask = obj_info["name"]
 
                 try:
-                    image_file = os.path.join(root_dir, info["image_path"])
+                    image = os.path.join(root_dir, info["image_path"])
                 except:
                     image = obj_info['image']
 

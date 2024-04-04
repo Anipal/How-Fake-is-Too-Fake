@@ -2,8 +2,6 @@ import argparse
 import torch
 import sys
 
-sys.path.append("/nethome/jkruk3/how_fake/How-Fake-is-Too-Fake/llava_weights")
-
 from llava.constants import (
     IMAGE_TOKEN_INDEX,
     DEFAULT_IMAGE_TOKEN,
@@ -107,8 +105,10 @@ def eval_model(args):
     prompt = conv.get_prompt()
 
     image_files = image_parser(args)
-    if type(images[0]) == str:
+    if type(image_files[0]) == str:
         images = load_images(image_files)
+    else: 
+        images = image_files
     image_sizes = [x.size for x in images]
     images_tensor = process_images(images, image_processor, model.config).to(
         model.device, dtype=torch.float16
@@ -200,8 +200,10 @@ def eval_model_wo_loading(tokenizer, model, image_processor, context_len, args):
     prompt = conv.get_prompt()
 
     image_files = image_parser(args)
-    if type(images[0]) == str:
+    if type(image_files[0]) == str:
         images = load_images(image_files)
+    else: 
+        images = image_files
     image_sizes = [x.size for x in images]
     images_tensor = process_images(images, image_processor, model.config).to(
         model.device, dtype=torch.float16

@@ -1,7 +1,7 @@
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5"
 import sys
 from tqdm import tqdm
 from run_llava import eval_model, load_model, eval_model_wo_loading
@@ -39,9 +39,9 @@ DATA_DIR = "/data/jkruk3/Half_Truths_Dataset"
 ROOT_DIR = "/data/jkruk3"
 OUTPATH = os.path.join(DATA_DIR, "metadata_pert_ade20k.json")
 VIZ_DIR = os.getcwd()
-# MODEL = "liuhaotian/llava-v1.6-mistral-7b"
-MODEL = "liuhaotian/llava-v1.6-34b"
-DS = "CityScapes"  # benchmark to sample data from for this run
+MODEL = "liuhaotian/llava-v1.6-mistral-7b"
+# MODEL = "liuhaotian/llava-v1.6-34b"
+DS = "ADE20K"  # benchmark to sample data from for this run
 
 metadata, processed_metadata = load_data(DATA_DIR, OUTPATH)
 # metadata, processed_metadata = load_data_hf(
