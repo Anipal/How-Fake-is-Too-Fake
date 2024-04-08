@@ -1,7 +1,7 @@
 import os
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
 import sys
 from tqdm import tqdm
 from run_llava import eval_model, load_model, eval_model_wo_loading
@@ -13,6 +13,7 @@ from diffusers import (
 )
 from utils import *
 from sentence_transformers import SentenceTransformer, util
+from accelerate import Accelerator
 from datasets import load_dataset
 import PIL
 from PIL import Image, ImageFilter
@@ -39,8 +40,8 @@ DATA_DIR = "/data/jkruk3/Half_Truths_Dataset"
 ROOT_DIR = "/data/jkruk3"
 OUTPATH = os.path.join(DATA_DIR, "metadata_pert_ade20k.json")
 VIZ_DIR = os.getcwd()
-MODEL = "liuhaotian/llava-v1.6-mistral-7b"
-# MODEL = "liuhaotian/llava-v1.6-34b"
+# MODEL = "liuhaotian/llava-v1.6-mistral-7b"
+MODEL = "liuhaotian/llava-v1.6-34b"
 DS = "ADE20K"  # benchmark to sample data from for this run
 
 metadata, processed_metadata = load_data(DATA_DIR, OUTPATH)
@@ -51,6 +52,9 @@ metadata, processed_metadata = load_data(DATA_DIR, OUTPATH)
 data_samp = sample_by_dataset(metadata, DS)
 print(f"Number of images for mask label perturbation: {len(data_samp)}\n")
 print(f"Number of images for already processed: {len(processed_metadata)}\n")
+
+data_ds = InpaintingPertDataset(data_samp)
+inf_dataloader = DataLoader(data_ds, batch_size=1, shuffle=True)
 
 ## MODEL LOADING  ##
 
@@ -77,8 +81,11 @@ args = type(
     },
 )()
 
+accelerator = Accelerator()
 tokenizer, model, image_processor, context_len = load_model(args)
-
+model, inf_dataloader, tokenizer, image_processor = accelerator.prepare(
+    model, inf_dataloader, tokenizer, image_processor
+)
 
 ## PROMPT STRUCTURING ##
 

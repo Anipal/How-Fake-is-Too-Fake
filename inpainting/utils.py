@@ -7,6 +7,8 @@ from tqdm import tqdm
 from run_llava import eval_model, load_model, eval_model_wo_loading
 from datetime import datetime
 from datasets import load_dataset
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, utils
 import ipdb
 import pandas as pd
 
@@ -48,22 +50,22 @@ def df_to_json(hf_data):
     org_img_ids = hf_data.image_id.unique()
 
     for img_id in org_img_ids:
-        img_data = hf_data.loc[hf_data.image_id==img_id]
+        img_data = hf_data.loc[hf_data.image_id == img_id]
         d_ = {}
 
-        d_['image'] = img_data.iloc[0]['image']
-        d_['dataset'] = img_data.iloc[0]['dataset']
-        d_['entities'] = img_data.iloc[0]['entities']
-        d_['class'] = img_data.iloc[0]['class']
-        d_['objects'] = []
+        d_["image"] = img_data.iloc[0]["image"]
+        d_["dataset"] = img_data.iloc[0]["dataset"]
+        d_["entities"] = img_data.iloc[0]["entities"]
+        d_["class"] = img_data.iloc[0]["class"]
+        d_["objects"] = []
 
         for _, row in img_data:
             m_ = {}
-            m_['id'] = row['mask_id']
-            m_['mask'] = row['mask']
-            m_['name'] = row['mask_name']
-            m_['ratio'] = row['ratio']
-            d_['objects'].append(m_)
+            m_["id"] = row["mask_id"]
+            m_["mask"] = row["mask"]
+            m_["name"] = row["mask_name"]
+            m_["ratio"] = row["ratio"]
+            d_["objects"].append(m_)
 
         data_dict[img_id] = d_
 
@@ -78,7 +80,7 @@ def load_data_hf(hf_dataset, data_dir, out_path):
     will return an empty dictionary object.
     """
     hf_data = load_dataset(hf_dataset)
-    
+
     # loading flat metadata & joining in mask labels:
     metadata = pd.read_csv(os.path.join(data_dir, "metadata_flat.csv"))
     datasets = metadata.dataset.unique()
@@ -98,7 +100,7 @@ def load_data_hf(hf_dataset, data_dir, out_path):
         data_df["dataset"] = [ds] * len(data_df)
         ds_dfs.append(data_df)
     full_data = pd.concat(ds_dfs)
-    full_data = full_data.loc[full_name.mask_name!='NA']
+    full_data = full_data.loc[full_name.mask_name != "NA"]
     # full_data = full_data.rename(
     #     columns={"label": "mask", "img_name": "image_id", "mask_name": "mask_id"}
     # )
@@ -106,7 +108,7 @@ def load_data_hf(hf_dataset, data_dir, out_path):
     if os.path.exists(out_path):
         with open(out_path, "r") as f:
             processed = json.load(f)
-        
+
         # removing already processed data from consideration
         full_data = full_data.loc[~full_data.img_name.isin(processed.img_name)]
 
@@ -407,7 +409,7 @@ def get_llava_perts(
             try:
                 image = os.path.join(root_dir, info["image_path"])
             except:
-                image = info["object"]['image']
+                image = info["object"]["image"]
 
             output = ""
             counter = 0
@@ -447,7 +449,7 @@ def get_llava_perts(
                 try:
                     image = os.path.join(root_dir, info["image_path"])
                 except:
-                    image = obj_info['image']
+                    image = obj_info["image"]
 
                 output = ""
                 counter = 0
@@ -522,3 +524,29 @@ def get_llava_perts(
         json.dump(processed_metadata, out_file)
 
     return processed_metadata
+
+
+class InpaintingPertDataset(Dataset):
+    """
+    This is a custiom pytorch dataser used for generating
+    augmented images via diffusion inpainting.
+    """
+
+    def __init__(self, data_dict):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.data = data_dict
+        self.img_ids = list(data_dict.keys())
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img_id = idx
+        img_info = self.img_ids[idx]
+        return img_id, img_info
