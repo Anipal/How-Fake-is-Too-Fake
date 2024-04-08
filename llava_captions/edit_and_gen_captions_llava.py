@@ -2,8 +2,9 @@ import sys
 import json
 import tempfile
 from accelerate.logging import get_logger
+from accelerate import init_empty_weights
 from sentence_transformers import SentenceTransformer, util
-from transformers import LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import transformers
 import argparse
 import difflib
@@ -11,9 +12,16 @@ import re
 import random
 import pdb
 import torch
+import os
+
+from PIL import Image
+from transformers import BlipProcessor, BlipForConditionalGeneration 
+
 # from lance.utils.misc_utils import *
 torch.set_float32_matmul_precision("medium")
 logger = get_logger("lance")
+
+torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 sys.path.append('/raid/mphute6/HalfTruths')
 sys.path.append('/raid/mphute6/HalfTruthsLLaVA')
@@ -21,7 +29,8 @@ sys.path.append('/raid/mphute6/HalfTruths/LLaVA/llava/')
 
 from llava.eval.run_llava import eval_model ,load_model, eval_model_wo_loading
 
-LLAVA_PATH = "liuhaotian/llava-v1.6-mistral-7b"
+# HERMES
+LLAVA_PATH = "liuhaotian/llava-v1.6-34b"
 CACHE_DIR = "cache"
 
 context = """
@@ -33,16 +42,20 @@ Semantic change in images refers to alterations in meaning or interpretation. He
 
 Using the definitions of small, medium, and large semantic changes above. """
 
-tokenizer_llama = LlamaTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
-model_llama = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
+# tokenizer_llama = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
+# model_llama = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
 
-pipeline = transformers.pipeline(
-            "text-generation",
-            tokenizer=tokenizer_llama,
-            model=model_llama,
-            torch_dtype=torch.float16,
-            device_map="auto",
-        )
+processor_blip = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+model_blip = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
+
+
+# pipeline = transformers.pipeline(
+#             "text-generation",
+#             tokenizer=tokenizer_llama,
+#             model=model_llama,
+#             torch_dtype=torch.float16,
+#             device=0,
+#         )
 
 class LlavaGenerate_Edit:
     def __init__(
@@ -53,7 +66,7 @@ class LlavaGenerate_Edit:
         image_file: str = "",
         cache_dir: str = "cache",
         model_name: str = "LlavaLlamaForCausalLM",
-        model_path: str =  "liuhaotian/llava-v1.6-mistral-7b",
+        model_path: str =  LLAVA_PATH,
         model_base = None,
         conv_mode = None,
         sep: str = ",",
@@ -92,19 +105,22 @@ class LlavaGenerate_Edit:
         embeddings = self.semantic_change.encode(sentences)
         return embeddings
 
+    '''
     def get_llama_response(self, prompt_eng, pipeline, tokenizer):
         instruction_prompt = prompt_eng
         response = pipeline(
-        instruction_prompt,
-        do_sample=True,
-        top_k=1,
-        num_return_sequences=1,
-        eos_token_id=tokenizer.eos_token_id,
-        max_length=200,
-    )   
+            instruction_prompt,
+            do_sample=True,
+            top_k=1,
+            num_return_sequences=1,
+            eos_token_id=tokenizer.eos_token_id,
+            max_length=200,
+            pad_token_id=tokenizer_llama.eos_token_id
+        )   
         response_text = response[0]["generated_text"].split(":")[-1]
         # pdb.set_trace()
         return response_text
+    '''
 
     def _compute_diff(self, cap1, cap2):
         """
@@ -160,7 +176,7 @@ class LlavaGenerate_Edit:
         sem_embed = self._compute_embeddings(original_cap, perturbed_caps)
         for ix, pcap in enumerate(perturbed_caps):
             original, edit = self._compute_diff(original_cap, pcap)
-            sem_change = 1-(util.pytorch_cos_sim(sem_embed[0],sem_embed[ix+1])).numpy()[0][0]
+            sem_change = 1-(util.pytorch_cos_sim(sem_embed[0],sem_embed[ix+1])).cpu().numpy()[0][0]
             perturbations_dict_list.append(
                 {
                     "original_caption": original_cap,
@@ -186,7 +202,8 @@ class LlavaGenerate_Edit:
             Caption for changed image 3:
 
             """
-        prompt = context + f" Given the original caption for the image is: {og_cap}. Make 3 {size} semantic unique changes in the image, " + " The captions should be understandable in isolation to the original caption. Do not use relative descriptors" + output_struct
+        # prompt = context + f" Given the original caption for the image is: {og_cap}. Make 3 {size} semantic unique changes in the image, " + " The captions should be understandable in isolation to the original caption. Do not use relative descriptors" + output_struct
+        prompt = context + f" Given the original caption for the image is: {og_cap}. Produce a new caption for this image that would reflect a {size} semantic change. Changes can be made to objects, verbs, adjectives, and prepositions" + output_struct
         return prompt
      
     def generate_prompt_og(self):
@@ -194,17 +211,49 @@ class LlavaGenerate_Edit:
         return prompt
     
     def summarize_edited_caption(self, edited_cap):
-        prompt = f"Rephrase the following text to be a single sentence based on the changes introduced in the text: \n{edited_cap} "
+        prompt = f"Rephrase the following text into one sentence based on the changes introduced in the text. Output only one sentence under 30 words: \n{edited_cap} "
         return prompt
+    
+    def get_blip_caption(self, img_file):
+        raw_image = Image.open(img_file).convert('RGB')
+        text = "a photo of"
+        inputs = processor_blip(raw_image,text, return_tensors="pt").to("cuda")
+        out = model_blip.generate(**inputs)
+        caption_og = processor_blip.decode(out[0], skip_special_tokens=True)
+        return caption_og
+    
+    def quality_flag(self, new_caps_list, perturbation_type):
+        if perturbation_type == "all":
+            perturbation_type_list = ["small", "medium", "large"]
+        else:
+            perturbation_type_list = perturbation_type
+        
+        ## making sure all types of requested perturbations are present
+        ecap_ptypes = [ecap["perturbation_type"] for ecap in new_caps_list]
+        
+        if_type_in_ecap = [True if typ in ecap_ptypes else False for typ in perturbation_type_list]
+        qual_flag = sum(if_type_in_ecap) == len(if_type_in_ecap)
+        # pdb.set_trace()
+        new_caps_list.append({"quality_flag": qual_flag})
+        return new_caps_list
+    
+    def fix_caption_format(self, perturbed_captions_dict_list):
+        for ix in range(len(perturbed_captions_dict_list)):
+            perturbed_captions_dict_list[ix]["edited_caption"] = perturbed_captions_dict_list[ix]["edited_caption"].strip().split("\n")[0].split(".")[0]
+        return perturbed_captions_dict_list
+
         
     def get_captions(self, image_file,perturbation_type='all'):
         perturbations = []
         edit_type = []
-        prompt_og = self.generate_prompt_og()
-        setattr(self.args,"image_file", image_file) 
-        setattr(self.args,"query",prompt_og) 
-        original_caption_whole = eval_model_wo_loading(self.tokenizer, self.model, self.image_processor, self.context_len, self.args)
-        original_caption = original_caption_whole.split(".")[0]
+        # prompt_og = self.generate_prompt_og()
+        # setattr(self.args,"image_file", image_file) 
+        # setattr(self.args,"query",prompt_og) 
+        # original_caption_whole = eval_model_wo_loading(self.tokenizer, self.model, self.image_processor, self.context_len, self.args)
+        # original_caption = original_caption_whole.split(".")[0]
+        # pdb.set_trace()
+        original_caption = self.get_blip_caption(image_file)
+        # pdb.set_trace()
 
         if perturbation_type == "all":
             perturbation_types = self.sizes
@@ -217,26 +266,34 @@ class LlavaGenerate_Edit:
         
             prompt_edit = self.generate_prompt_edits(original_caption,perturbation_type)
             setattr(self.args,"query",prompt_edit) 
+            setattr(self.args,"image_file", image_file) 
             # setattr(self.args,"image_file", "")
             responses = eval_model_wo_loading(self.tokenizer, self.model, self.image_processor, self.context_len, self.args)
             lines = responses.split('\n')
-            for j, line in enumerate(lines):
-                line = line.strip()
-                if line.startswith('Caption for changed image'):
-                    if(line.split(':')[-1] == ""):
-                        try:
-                            modified_captions.append(lines[j+1].strip())
-                        except:
-                            pdb.set_trace()
-                    else:
-                        modified_captions.append(line.split(':')[-1])
-                
-                    # summarize the modified caption and us ethat for compute instead
-                    sum_edcap_prompt = self.summarize_edited_caption(modified_captions[-1])
-                    setattr(self.args,"query",sum_edcap_prompt) 
-                    sum_edcap = self.get_llama_response(sum_edcap_prompt, pipeline, tokenizer_llama) 
-                    # pdb.set_trace()
-                    modified_summarized_captions.append(sum_edcap)
+            if len(lines) == 0:
+                print("WARNING: No edited captions found")
+                # pdb.set_trace()
+            else:
+                for j, line in enumerate(lines):
+                    line = line.strip()
+                    if line.startswith('Caption for changed image'):
+                        if(line.split(':')[-1] == ""):
+                            try:
+                                modified_captions.append(lines[j+1].strip())
+                            except:
+                                # pdb.set_trace()
+                                print(f"skipped {perturbation_type}")
+                                pass
+                        else:
+                            modified_captions.append(line.split(':')[-1])
+                    
+                        # summarize the modified caption and us ethat for compute instead
+                        # print("unsummarized caption: ", modified_captions[-1])
+                        # sum_edcap_prompt = self.summarize_edited_caption(modified_captions[-1])
+                        # setattr(self.args,"query",sum_edcap_prompt) 
+                        # sum_edcap = self.get_llama_response(sum_edcap_prompt, pipeline, tokenizer_llama) 
+                        # pdb.set_trace()
+                        modified_summarized_captions.append(modified_captions[-1])
             perturbations.extend(modified_summarized_captions)
             edit_type.extend([perturbation_type]*len(modified_summarized_captions))
                         
@@ -248,10 +305,12 @@ class LlavaGenerate_Edit:
             return "", perturbed_captions_dict_list
         perturbed_captions_dict_list = self._parse_perturbations(original_caption , perturbations,edit_type)
         random.shuffle(perturbed_captions_dict_list)
+        #fix formatting of the perturbed captions
+        perturbed_captions_dict_list = self.fix_caption_format(perturbed_captions_dict_list)
         if self.verbose:
             for ix in range(min(len(perturbed_captions_dict_list), 10)):
                 ecap = perturbed_captions_dict_list[ix]["edited_caption"]
-                print(f"INFO ({edit_type[ix]}) :  {ix+1}: {ecap}\n")
+                print(f"INFO ({edit_type[ix]}) :  {ix+1}: {ecap}")
             print(f"INFO: (end of image)...\n")
         if self.verbose:
             print(f"INFO:  => Original caption: {original_caption}")
