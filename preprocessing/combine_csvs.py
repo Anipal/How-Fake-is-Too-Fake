@@ -2,8 +2,8 @@ import pandas as pd
 import os
 # List of CSV files to combine
 root_dir = '/srv/share4/apal72/half-truths/data/Half_Truths_Dataset/generated_images/mistral_inpainting'
-csv_files = ['ADE20K_mistral_subset.csv', 'CityScapes_mistral_subset.csv', 'OpenImages_mistral_subset.csv','SUN_RGBD_mistral_subset.csv','HumanParsing_mistral_subset.csv']
-save_csv = 'mistral_subset.csv'
+csv_files = ['ADE20K_mistral_subset.csv', 'CityScapes_mistral_subset_2.csv', 'OpenImages_mistral_subset.csv','SUN_RGBD_mistral_subset_2.csv','HumanParsing_mistral_subset_2.csv']
+save_csv = 'mistral_subset_2.csv'
 # Initialize an empty list to store DataFrames
 dfs = []
 
