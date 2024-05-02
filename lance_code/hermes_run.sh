@@ -23,7 +23,7 @@ OUTPUT_FILE="$OUTPUT_DIR/hermes/$ldm"
 mkdir -p "$OUTPUT_FILE"
 
 #Path to caption json
-editcap_path="$OUTPUT_DIR/quality_check/edited_captions/$data.json"
+editcap_path="$OUTPUT_DIR/quality_check/edited_captions/${data}_2.json"
 
 #Root path to folder containing Half_Truths_Dataset
 IMG_DIR='/srv/hoffman-lab/share4/apal72/half-truths/data'
