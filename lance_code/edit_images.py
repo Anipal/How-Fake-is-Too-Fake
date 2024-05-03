@@ -326,7 +326,7 @@ class ImageEditor:
                 best_sim_dir = [-1 for _ in range(len(clip_sim_dir))]
                 # pdb.set_trace()
                 for ix in range(len(clip_sim_dir)):
-                    full_out_path = os.path.splitext(out_path)[0] + "/{}.jpeg".format(
+                    full_out_path = out_path + "/{}.jpeg".format(
                     str("_".join(edits[ix].split(" ")))
                         )
                     if not (self.is_filename_too_long(full_out_path.split('/')[-1])):
