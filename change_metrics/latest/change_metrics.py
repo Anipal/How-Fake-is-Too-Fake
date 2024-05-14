@@ -26,7 +26,7 @@ perturb_type = data['method'][0]
 change_calc = Change(perturb_type=perturb_type)
 
 metrics = []
-real_paths = real_paths[:100]
+# real_paths = real_paths[:100]
 for i in tqdm(range(len(real_paths)),total = len(real_paths)):
     if(perturb_type == 'p2p'):
         pass 
