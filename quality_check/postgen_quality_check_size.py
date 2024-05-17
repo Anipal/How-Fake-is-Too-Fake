@@ -47,17 +47,16 @@ def main():
     header = next(file)
 
     header_qc = header
-    header_qc.extend(['cap2_img2', 'direct_sim', 'brisque_score'])
+    header_qc.extend(['cap2_img2', 'direct_sim','img1_img2','brisque_score_orig','brisque_score_perturb'])
 
     out_f = open(CSV_POSTGEN_QC, 'w')
     writer = csv.writer(out_f)
     writer.writerow(header_qc)
     
     i=0
-
     for row in tqdm(file):
-        i+=1
-        if i==6:
+        i=i+1
+        if i ==6:
             break
       
         if len(row[column_map['image']]):
@@ -68,6 +67,8 @@ def main():
             orig_img_path = os.path.join(PATH_TO_DATA_PARENT, DS, row[column_map['img_id']]+DS_EXTENSION)
             orig_img = Image.open(orig_img_path)
             orig_caption = row[column_map['mask_name']]
+            brisque_score_orig = brisque_Score(orig_img)
+            
 
             perturbed_img_path = os.path.join(PATH_TO_PERTURB_DATA_PARENT , row[column_map['dataset']], model ,row[column_map['mask_id']]+"_"+DS +"_"+model + EDIT_EXTENSION)
             perturbed_img = Image.open(perturbed_img_path)
@@ -79,10 +80,11 @@ def main():
 
             cap2_img2 = calculate_image_caption_clip_similarity(perturbed_img , perturbed_caption)
             direct_sim = calculate_directional_similarity(orig_img , orig_caption , perturbed_img , perturbed_caption)
-
+            img1_img2  = calculate_image_similarity(orig_img , perturbed_img)
             brisque_score = brisque_Score(perturbed_img)
 
-            row.extend([cap2_img2, direct_sim, brisque_score])
+
+            row.extend([cap2_img2, direct_sim, img1_img2, brisque_score_orig, brisque_score])
 
             writer.writerow(row)
 

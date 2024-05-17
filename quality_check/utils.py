@@ -52,6 +52,13 @@ def calculate_image_caption_clip_similarity(image, caption):
     similarity = torch.nn.functional.cosine_similarity(image_encoding, caption_encoding, dim=-1)
     return similarity.item()   
 
+def calculate_image_similarity(image1,  image2):
+    image1 = preprocess_image(image1)["pixel_values"]
+    image2 = preprocess_image(image2)["pixel_values"]
+    image_encoding1 = model.get_image_features(image1)
+    image_encoding2 = model.get_image_features(image2)
+    similarity = torch.nn.functional.cosine_similarity(image_encoding1 ,image_encoding2 , dim=-1)
+    return similarity.item()   
 
 # Define a function to calculate the similarity between an image and a caption
 def calculate_directional_similarity(image1, caption1, image2, caption2):
