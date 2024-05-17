@@ -4,6 +4,8 @@ from transformers import CLIPProcessor, CLIPModel, CLIPTokenizer, CLIPImageProce
 from PIL import Image
 import numpy as np
 import pdb
+import cv2
+from brisque import BRISQUE
 
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -65,3 +67,9 @@ def calculate_directional_similarity(image1, caption1, image2, caption2):
     image_encoding2 = model.get_image_features(image2)
     similarity = torch.nn.functional.cosine_similarity(image_encoding1 - caption_encoding[0],image_encoding2 - caption_encoding[1] , dim=-1)
     return similarity.item()   
+
+def brisque_Score(img):
+    ndarray = np.asarray(img)
+    obj = BRISQUE(url=False)
+    score = obj.score(img=ndarray)
+    return score
