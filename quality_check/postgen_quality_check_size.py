@@ -9,11 +9,11 @@ import os
 
 torch.set_default_tensor_type('torch.cuda.FloatTensor') 
 
-DS = 'CityScapes'
-MODEL = 'Kandisnky'
-DS_EXTENSION = ".png"
+DS = 'ADE20K'
+MODEL = 'StableDiffusionXL'
+
 # CSV_READ_FILE = '/raid/mphute6/HalfTruths/Half_Truths_Dataset/full_inpainted_data_sample.csv'
-CSV_READ_FILE = '/raid/mphute6/HalfTruths/inpainting_data/half-truths/half-truths/CityScapes/CityScapes_Kandinsky_2_2_meta.csv'
+CSV_READ_FILE = '/raid/mphute6/HalfTruths/inpainting_data/half-truths/half-truths/ADE20K/ADE20K_StableDiffusion_XL_meta.csv'
 column_map ={
     'image':0,
     'mask':1,
@@ -32,39 +32,35 @@ column_map ={
     'perturbed_path':14
 }
 
+DS_extemsion_dict ={
+        "ADE20K": "jpg",
+        "CelebAHQ": "jpg",
+        "CityScapes": "png",
+        "HumanParsing": "png",
+        "OpenImages": "jpg",
+        "SUN_RGBD": "jpg",
+    }
 
 PATH_TO_DATA_PARENT = "/raid/mphute6/HalfTruths/Half_Truths_Dataset/images/"
 CSV_POSTGEN_QC = f"/raid/mphute6/HalfTruths/postgen_quality_check_size_{DS}_{MODEL}.csv"
 PATH_TO_PERTURB_DATA_PARENT = "/raid/mphute6/HalfTruths/inpainting_data/half-truths/half-truths/"
 EDIT_EXTENSION = ".png"
 
-
-def main():
-
-    
-    f = open(CSV_READ_FILE, 'r')
-    file =  csv.reader(f)
-    header = next(file)
-
-    header_qc = header
-    header_qc.extend(['cap2_img2', 'direct_sim','img1_img2','brisque_score_orig','brisque_score_perturb'])
-
-    out_f = open(CSV_POSTGEN_QC, 'w')
-    writer = csv.writer(out_f)
-    writer.writerow(header_qc)
-    
-    i=0
-    for row in tqdm(file):
-        i=i+1
-        if i ==6:
-            break
-      
-        if len(row[column_map['image']]):
+def post_qual_check_row(row, 
+                           writer, 
+                           DS, 
+                           column_map, 
+                           PATH_TO_DATA_PARENT, 
+                           PATH_TO_PERTURB_DATA_PARENT, 
+                           DS_EXTENSION, 
+                           EDIT_EXTENSION
+                           ):
+    if len(row[column_map['image']]):
             method = row[column_map['method']]
             model = row[column_map['model']]
             
-
-            orig_img_path = os.path.join(PATH_TO_DATA_PARENT, DS, row[column_map['img_id']]+DS_EXTENSION)
+            # remove model from orig path when just running independently
+            orig_img_path = os.path.join(PATH_TO_DATA_PARENT, DS,model, row[column_map['img_id']]+DS_EXTENSION)
             orig_img = Image.open(orig_img_path)
             orig_caption = row[column_map['mask_name']]
             brisque_score_orig = brisque_Score(orig_img)
@@ -74,7 +70,7 @@ def main():
             perturbed_img = Image.open(perturbed_img_path)
 
             if not perturbed_img.getbbox():
-                continue
+                return
 
             perturbed_caption = row[column_map['perturbed_label']]
 
@@ -88,9 +84,50 @@ def main():
 
             writer.writerow(row)
 
+
+def postgen_quality_check(CSV_READ_FILE,
+                          CSV_POSTGEN_QC,
+                          DS,
+                          column_map,
+                          PATH_TO_DATA_PARENT,
+                          PATH_TO_PERTURB_DATA_PARENT,
+                          DS_EXTENSION,
+                          EDIT_EXTENSION): 
+    f = open(CSV_READ_FILE, 'r')
+    file =  csv.reader(f)
+    header = next(file)
+
+    header_qc = header
+    header_qc.extend(['cap2_img2', 'direct_sim','img1_img2','brisque_score_orig','brisque_score_perturb'])
+
+    out_f = open(CSV_POSTGEN_QC, 'w')
+    writer = csv.writer(out_f)
+    writer.writerow(header_qc)
+    
+    for row in tqdm(file):
+      post_qual_check_row(row, 
+                           writer, 
+                           DS, 
+                           column_map, 
+                           PATH_TO_DATA_PARENT, 
+                           PATH_TO_PERTURB_DATA_PARENT, 
+                           DS_EXTENSION, 
+                           EDIT_EXTENSION
+                           )
+        
     f.close()
     out_f.close()
-    
+
+def main():
+    DS_EXTENSION = DS_extemsion_dict[DS]
+    postgen_quality_check(CSV_READ_FILE,
+                          CSV_POSTGEN_QC,
+                          DS,
+                          column_map,
+                          PATH_TO_DATA_PARENT,
+                          PATH_TO_PERTURB_DATA_PARENT,
+                          DS_EXTENSION,
+                          EDIT_EXTENSION)
 
 if __name__ == "__main__":
     main()
