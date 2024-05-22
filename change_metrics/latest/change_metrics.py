@@ -29,8 +29,8 @@ change_calc = Change(save_dir=args.save_dir)
 
 metrics = []
 # real_paths = real_paths[:100]
-real_paths = real_paths[:100] 
-fake_paths = fake_paths[:100]
+# real_paths = real_paths[:100] 
+# fake_paths = fake_paths[:100]
 # pdb.set_trace()
 for i in tqdm(range(len(real_paths)),total = len(real_paths)):
     # if(perturb_type == 'p2p'):
