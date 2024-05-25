@@ -4,7 +4,8 @@ import pdb
 from tqdm import tqdm
 import os
 
-parser = argparse.ArgumentParser(description="Color Scheme for Skyscapes and Uavid")parser.add_argument(
+parser = argparse.ArgumentParser(description="Color Scheme for Skyscapes and Uavid")
+parser.add_argument(
     "--root_csv",
     type=str,
     default="/srv/share4/apal72/half-truths/csvs/consolidated_meta_no_helen.csv",
@@ -27,7 +28,7 @@ datasets = []
 models = []
 
 data = pd.read_csv(args.root_csv)
-data = data.sort_values(by="method", ascending=True)
+data = data.sort_values(by="method", ascending=False)
 # pdb.set_trace()
 
 try:
@@ -53,9 +54,9 @@ change_calc = Change(save_dir=args.save_dir)
 metrics = []
 # real_paths = real_paths[:100]
 for i in tqdm(range(len(real_paths)), total=len(real_paths)):
-    if data.iloc[i].method != perturb_type:
-        perturb_type = data.iloc[i].method
-        change_calc = Change(perturb_type=perturb_type)
+    # if data.iloc[i].method != perturb_type:
+    #     perturb_type = data.iloc[i].method
+    #     change_calc = Change(perturb_type=perturb_type)
 
     try:
         metrics.append(
@@ -90,16 +91,7 @@ final_data = pd.concat([data, metrics_data], axis=1)
 
 name = os.path.splitext(args.root_csv.split("/")[-1])[0] + "_mag-metrics.csv"
 pdb.set_trace()
+
 if not (os.path.exists(os.path.join(args.root_dir, "mag_csvs"))):
     os.makedirs(os.path.join(args.root_dir, "mag_csvs"))
 final_data.to_csv(os.path.join(args.root_dir, "mag_csvs", name), index=False)
-name = os.path.splitext(args.root_csv.split('/')[-1])[0] + 'trial_mag-metrics.csv'
-# pdb.set_trace()
-if not(os.path.exists(os.path.join(args.root_dir,'mag_csvs'))):
-    os.makedirs(os.path.join(args.root_dir,'mag_csvs'))
-final_data.to_csv(os.path.join(args.root_dir,'mag_csvs',name), index=False)
-
-
-
-
-
