@@ -1,6 +1,7 @@
 import argparse
 import glob
 import os
+import sys
 
 import torch
 import csv
@@ -8,20 +9,33 @@ import pandas as pd
 import torch.nn
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
-from PIL import Image
+from PIL import Image, ImageFilter
 from tqdm import tqdm
+import random
+import clip
+import subprocess
 
 from gradcam import get_gradcam_ops
 
 from DIRE.utils.utils import get_network, str2bool, to_cuda
 from CNNDetection.networks.resnet import resnet50
+from UniversalFakeDetect.models import get_model
+sys.path.append('../')
+import preprocessing.utils as utils
+import numpy as np
+import pdb
+import importlib.util
+
+import torchvision.models as models
+import torch.nn.functional as F
+from transformers import AutoImageProcessor, AutoModel
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
-    "-f", "--file", default="../../detectors/data/meta_mini.csv", type=str, help="path to csv of image metadata"
+    "-f", "--file", default="../../detectors/data_0/meta_mini.csv", type=str, help="path to csv of image metadata"
 )
 parser.add_argument(
-    "-r", "--root_dir", default="../../detectors/data/", type=str, help="path to csv of image metadata"
+    "-r", "--root_dir", default="../../detectors/data_0/", type=str, help="path to root directory of image metadata"
 )
 parser.add_argument(
     "-m",
@@ -30,8 +44,9 @@ parser.add_argument(
     default="../../detectors/CNNDetection/weights/blur_jpg_prob0.1.pth",
 )
 parser.add_argument("--arch", type=str, default="resnet50")
+parser.add_argument('--ckpt', type=str, default='./UniversalFakeDetect/pretrained_weights/fc_weights.pth', help='Path to model checkpoint')
 parser.add_argument("--aug_norm", type=str2bool, default=True)
-parser.add_argument("--model", type=str, default="dire", help="argsions: dire, cnnspot, defake")
+parser.add_argument("--model", type=str, default="dinov2", help="options: dire, cnnspot, defake, universalfakedetect, dinov2, crossefficientvit")
 parser.add_argument('-b', '--batch_size', type=int, default=32, help='Batch size')
 parser.add_argument('-j', '--workers', type=int, default=4, help='Number of workers')
 parser.add_argument('--size_only', action='store_true', help='Only look at sizes of images in dataset')
@@ -69,50 +84,304 @@ if torch.cuda.is_available():
 else:
     device = torch.device("cpu")
 
+######## De-Fake functions ################
+def import_NN():
+    module_name = 'De-Fake.test'
+    module_path = os.path.join(os.path.dirname(__file__), 'De-Fake', 'test.py')
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module.NeuralNet
+
+def import_blip_decoder():
+    module_name = 'De-Fake.models.blip'
+    module_path = os.path.join(os.path.dirname(__file__), 'De-Fake', 'models', 'blip.py')
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module.blip_decoder
+
+####### DINOV2 functions #################
+def load_model():
+    processor = AutoImageProcessor.from_pretrained('facebook/dinov2-base')
+    model = AutoModel.from_pretrained('facebook/dinov2-base')
+    return model, processor
+
+def load_fake_image_detector():
+    # Load the pre-trained ResNet model for fake image detection
+    resnet_model = models.resnet18(pretrained=True)
+    # Freeze all the parameters in the ResNet model
+    for param in resnet_model.parameters():
+        param.requires_grad = False
+    # Modify the last fully connected layer to output 1 (binary classification)
+    num_features = resnet_model.fc.in_features
+    resnet_model.fc = torch.nn.Linear(num_features, 1)
+    return resnet_model
+
+def predict_image_dino(image, dino_model, processor, fake_detector_model):
+    # Predict if an image is real or fake using DinoV2 and a pre-trained ResNet model.
+    inputs = processor(images=image, return_tensors="pt")
+    with torch.no_grad():
+        dino_outputs = dino_model(**inputs)
+    dino_logits = dino_outputs.last_hidden_state
+
+    # Assuming DINO's last layer hidden states are used as features
+    dino_features = dino_logits[:, 0]
+
+    # Reshape the features tensor to [batch_size, channels, height, width]
+    batch_size = dino_features.shape[0]
+    dino_features = dino_features.view(batch_size, 1, 1, -1)
+
+    # Resize the features tensor to match the input size expected by the pre-trained ResNet model
+    dino_features_resized = F.interpolate(dino_features, size=(224, 224), mode='bilinear', align_corners=False)
+
+    # Convert the features tensor to have three channels (RGB)
+    dino_features_rgb = dino_features_resized.expand(-1, 3, -1, -1)
+
+    # Make predictions with the pre-trained ResNet model
+    fake_detector_model.eval()
+    with torch.no_grad():
+        predictions = torch.sigmoid(fake_detector_model(dino_features_rgb))
+
+    return predictions
+########## UniversalFakeDetect functions #################
+
+def predict_image_ufd(in_tens, model):
+    with torch.no_grad():
+        model.eval()
+        if torch.cuda.is_available():
+            in_tens = in_tens.cuda()
+        pred = torch.sigmoid(model(in_tens))
+        prob = pred.item()
+    return pred.item()
+
+########################################
 
 if args.model == "cnnspot":
     print("CNNSpot")
     model = resnet50(num_classes=1)
+    if args.model_path is not None:
+        state_dict = torch.load(args.model_path, map_location=device)
+        if "model" in state_dict:
+            state_dict = state_dict["model"]
+        model.load_state_dict(state_dict)
+    model.eval()
+    model.to(device)
 
 elif args.model == "dire":
+    print("DIRE")
     model = get_network(args.arch)
+    if args.model_path is not None:
+        state_dict = torch.load(args.model_path, map_location=device)
+        if "model" in state_dict:
+            state_dict = state_dict["model"]
+        model.load_state_dict(state_dict)
+    model.eval()
+    model.to(device)
 
-if args.model_path is not None:
-    state_dict = torch.load(args.model_path, map_location=device)
-    if "model" in state_dict:
-        state_dict = state_dict["model"]
-    model.load_state_dict(state_dict)
-model.eval()
-model.to(device)
+elif args.model == "defake":
+    print("De-Fake")
+    NeuralNet = import_NN()
+    blip_decoder = import_blip_decoder()
+    model = torch.load("./De-Fake/finetune_clip.pt").to(device)
+    linear = NeuralNet(1024,[512,256],2).to(device)
+    linear = torch.load('./De-Fake/clip_linear.pt')
+
+    model2, preprocess = clip.load("ViT-B/32")
+
+    image_size = 224
+
+    blip_url = 'https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_base_capfilt_large.pth'
+
+    blip = blip_decoder(pretrained=blip_url, image_size=image_size, vit='base')
+    blip.eval()
+    blip = blip.to(device)
+
+elif args.model == "dinov2":
+    print("DinoV2 with pretrained ResNet")
+    dino_model, processor = load_model()
+    detector_model = load_fake_image_detector()
+
+elif args.model == "universalfakedetect":
+    print("UniversalFakeDetect")
+    model = get_model('CLIP:ViT-L/14')
+    state_dict = torch.load(args.ckpt)  # Load on CUDA if available
+    model.fc.load_state_dict(state_dict)
+    if torch.cuda.is_available():
+        model.cuda()
+
+elif args.model == "crossefficientvit":
+    print("CrossEfficientViT")
+
+if args.model != "crossefficientvit":
+#################################################
+# If testing with generation masks and custom crop then uncomment till the next line of "##########"
+
+## Resize 256
+## Center crop 224
+## check if crop contains mask ratio white pixels after crop/white pixels before crop > 90%
+## if it isn't, then recrop (perhaps by taking the center pixel of the mask area and cropping 224 around it)
+## else, recompute the mask ratio and save that.
+
+# mask_list = []  ## TODO: initialize mask_list here ##
+# mask_list = [args.root_dir + path for path in mask_list]
+
+# for img_path, mask_path in tqdm(zip(file_list, mask_list), dynamic_ncols=True, disable=len(file_list) <= 1, total=len(file_list)):
+#   for i in range(1):
+#     # mask_path = 'Half_Truths_Dataset/masks/instance_010_ADE_train_00002126.png'
+#     # img_path = 'Half_Truths_Dataset/images/ADE_train_00002126.jpg'
+#     if os.path.exists(img_path):
+#         output_path = os.path.join(args.output_path, img_path.split('/')[-3], img_path.split('/')[-2])
+#         if not os.path.exists(output_path):
+#             os.makedirs(output_path)
+
+#         mask_orig = Image.open(mask_path).convert("RGB")
+#         mask_np_old = np.array(mask_orig)
+#         mask_trans = trans(mask_orig)
+#         mask_trans = transforms.ToPILImage()(mask_trans)
+#         mask_np_trans = np.array(mask_trans)
 
 
-for img_path in tqdm(file_list, dynamic_ncols=True, disable=len(file_list) <= 1):
-    if os.path.exists(img_path):
-        output_path = os.path.join(args.output_path, img_path.split('/')[-3], img_path.split('/')[-2])
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
-        img = Image.open(img_path).convert("RGB")
-        img = trans(img)
-        in_tens = img.unsqueeze(0)
-        in_tens = in_tens.to(device)
+#         good_crop = False
+#         ratio = 0
+#         height, width = mask_np_old.shape[:2]
+#         center_pixel = (height // 2, width // 2)
+#         while good_crop != True:
+#             r, mask_exists = utils.verify_mask(mask_trans)
 
-        with torch.no_grad():
-            prob = model(in_tens).sigmoid().item()
-        
-        get_gradcam_ops(model, in_tens, img_path, os.path.join(output_path, img_path.split('/')[-1]), device, args)
-        print(img_path, f"Prob of being synthetic: {prob:.4f}")
-        pred_data.append((round(prob, 2), '1' if prob >= 0.50 else '0'))  # Append (rounded probability, prediction) tuple
-    else:
-        print("Cannot find file")
-        pred_data.append(('NA', 'NA'))  # Append ('NA', 'NA') if file not found
-        continue
+#             if mask_exists:
+#                 # mask_np_old.save('mask_np_old.png')
+#                 # mask_np_trans.save('mask_np_old.png')
+#                 mask_sa_old = utils.mask_sa(mask_np_old)
+#                 mask_sa_new = utils.mask_sa(mask_np_trans)
+#                 mask_ratio = mask_sa_new/mask_sa_old
+#                 print(mask_ratio)
 
-print('predictions done, creating csv')
-print(pred_data)
-df['Prediction'] = [x[1] for x in pred_data]  # Extract predictions from (probability, prediction) tuple
-df['Probability'] = [x[0] for x in pred_data]  # Extract probabilities
-# print(df)
-if not os.path.exists("preds"):
-    os.makedirs("preds")
+#                 if mask_ratio >= 0.9:
+#                     ratio = r
+#                     good_crop = True
+#                     img = Image.open(img_path).convert("RGB")
+#                     trans_resize = transforms.Compose(
+#                                     (
+#                                         transforms.Resize(256),
+#                                     )
+#                                 )
+#                     img_trans = trans_resize(img)
+#                     img_trans = transforms.functional.crop(img_trans, center_pixel[0], center_pixel[1], 224, 224)
+#                     trans_new = transforms.Compose(
+#                                     (
+#                                         transforms.ToTensor(),
+#                                         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+#                                     )
+#                                 )
+#                     # pdb.set_trace()
+#                     img_trans = trans_new(img_trans)
+#                     print("saving mask")
+#                     mask_trans.save('mask_trans.png')
+#                     img_pil = transforms.ToPILImage()(img_trans)
+#                     print("saving img")
+#                     img_pil.save('transformed_image.png')
+#                     #in_tens = img_trans.unsqueeze(0)
+#                     #in_tens = in_tens.to(device)
+#                     in_tens = torch.clamp(img, min=0.0, max=1.0).unsqueeze(0).to(device)
 
-df.to_csv(os.path.join("preds", (args.model + "_preds.csv")), index=False)
+#                 else:
+#                     #Recrop randomly and save the center pixel of this crop
+#                     print("not the best crop")
+#                     crop_center = (random.randint(112, img.size[0] - 112), random.randint(112, img.size[1] - 112))
+#                     print(crop_center)
+#                     crop_position = (crop_center[0] - 112, crop_center[1] - 112)
+#                     mask_trans = transforms.functional.crop(mask_orig, crop_center[0], crop_center[1], 224, 224)
+#                     mask_trans.save('crop_img.png')
+#                     center_pixel = crop_position
+
+#############################################
+
+# If testing without generation masks uncomment till the next line of "######"
+    for img_path in tqdm(file_list, dynamic_ncols=True, disable=len(file_list) <= 1):
+        if os.path.exists(img_path):
+            img = Image.open(img_path).convert("RGB")
+            img = trans(img)
+
+            if args.model == "universalfakedetect":
+                img = img.filter(ImageFilter.GaussianBlur(radius=2))  # Apply Gaussian blur
+
+            # in_tens = img.unsqueeze(0).to(device)
+            in_tens = torch.clamp(img, min=0.0, max=1.0).unsqueeze(0).to(device)
+
+################################################
+
+            if args.model == "cnnspot":
+                print("Continuing CNNSpot")
+                with torch.no_grad():
+                    prob = model(in_tens).sigmoid().item()
+
+            elif args.model == "dire":
+                print("Continuing DIRE")
+                with torch.no_grad():
+                    prob = model(in_tens).sigmoid().item()
+
+            elif args.model == "defake":
+                print("Continuing De-Fake")
+                caption = blip.generate(in_tens, sample=False, num_beams=3, max_length=60, min_length=5)
+                print(caption)
+                text = clip.tokenize(list(caption)).to(device)
+
+                pred_data = []
+
+                with torch.no_grad():
+                    image_features = model.encode_image(in_tens)
+                    text_features = model.encode_text(text)
+                
+                    emb = torch.cat((image_features, text_features),1)
+                    output = linear(emb.float())
+                    # predict = output.argmax(1)
+                    # predict = predict.cpu().numpy()
+                    # print("Prediction:", predict)
+                    # pred_data.append(predict[0])
+                    prob = output.argmax(1)
+                    prob = prob.cpu().numpy()
+                    prob = prob[0]
+
+            elif args.model == "dinov2":
+                print("Continuing DinoV2")
+                prob = predict_image_dino(in_tens, dino_model, processor, detector_model).item()
+
+            elif args.model == "universalfakedetect":
+                # raise NotImplementedError
+                prob = predict_image_ufd(in_tens, model)
+
+            # get_gradcam_ops(model, in_tens, img_path, os.path.join(output_path, img_path.split('/')[-1]), device, args)
+            print(img_path, f"Prob of being synthetic: {prob:.4f}")
+            pred_data.append((round(prob, 2), '1' if prob >= 0.50 else '0'))  # Append (rounded probability, prediction) tuple
+        else:
+            print("Cannot find file")
+            pred_data.append(('NA', 'NA'))  # Append ('NA', 'NA') if file not found
+            continue
+
+
+    print('predictions done, creating csv')
+    print(pred_data)
+    df['Prediction'] = [x[1] for x in pred_data]  # Extract predictions from (probability, prediction) tuple
+    df['Probability'] = [x[0] for x in pred_data]  # Extract probabilities
+    # print(df)
+    if not os.path.exists("preds"):
+        os.makedirs("preds")
+
+    df.to_csv(os.path.join("preds", (args.model + "_preds.csv")), index=False)
+
+elif args.model == "crossefficientvit":
+    print("Continuing CrossEfficientViT")
+    file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/detect_faces.py"
+    facedetect = ["python3", file, "--data_path", "../../detectors/data_0/"]
+    subprocess.run(facedetect)
+
+    file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/extract_crops.py"
+    extractcrop = ["python3", file, "--data_path", "../../detectors/data_0/", "--output_path", "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/crop_output"]
+    subprocess.run(extractcrop)
+
+    file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/test.py"
+    test = ["python3", file, "--model_path", "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/cross_efficient_vit.pth", "--config", "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/configs/architecture.yaml"]
+    subprocess.run(test)

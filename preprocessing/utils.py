@@ -5,13 +5,21 @@ for processes before image perturbation scheme.
 import os
 import numpy as np
 import pandas as pd
-from datasets import load_dataset
+# from datasets import load_dataset
 from tqdm import tqdm
-import ipdb
+import pdb
 
 # import smartcrop
 from PIL import Image
 
+def mask_sa(mask):
+    flattened_mask = mask.reshape(-1, 3)
+    # Count the number of white pixels
+    # pdb.set_trace()
+    flattened_mask[flattened_mask > 0] = 1
+    white_pixels = np.sum(flattened_mask)
+    print("Number of white pixels:", white_pixels)
+    return white_pixels
 
 def crop_and_resize(image, main_mask, cropper, dest_size=256):
     """

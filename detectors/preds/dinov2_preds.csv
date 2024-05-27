@@ -1,0 +1,11 @@
+Unnamed: 0,dataset,image_path,id,name,pertrubation_type,change_value,model,SA_change_category,label,split,Prediction,Probability
+0,ADE20K,outputs/ade/adjective/ADE_train_00025188/musical.jpeg,ADE_train_00025188,musical,adjective,0.013905287,lance,1,fake,train,1,0.52
+1,ADE20K,outputs/ade/adjective/ADE_train_00013598/warehouse.jpeg,ADE_train_00013598,warehouse,adjective,0.03524816,lance,1,fake,val,1,0.51
+2,ADE20K,outputs/ade/adjective/ADE_train_00007900/shotgun.jpeg,ADE_train_00007900,shotgun,adjective,0.067761362,lance,2,fake,train,0,0.45
+3,ADE20K,outputs/ade/adjective/ADE_train_00015822/delicious.jpeg,ADE_train_00015822,delicious,adjective,0.012942255,lance,1,fake,train,0,0.45
+4,ADE20K,outputs/ade/adjective/ADE_train_00024717/teenage.jpeg,ADE_train_00024717,teenage,adjective,0.035015762,lance,1,fake,train,0,0.47
+5,ADE20K,outputs/ade/adjective/ADE_train_00015459/young.jpeg,ADE_train_00015459,young,adjective,0.059244394,lance,2,fake,train,0,0.5
+6,ADE20K,outputs/ade/adjective/ADE_train_00008673/khakisu.jpeg,ADE_train_00008673,khakis,adjective,0.036133647,lance,1,fake,train,NA,NA
+7,ADE20K,outputs/ade/adjective/ADE_train_00007887/black.jpeg,ADE_train_00007887,black,adjective,0.059257984,lance,2,fake,train,0,0.47
+8,ADE20K,outputs/ade/adjective/ADE_train_00023966/programmers.jpeg,ADE_train_00023966,programmers,adjective,0.1450388431549072,lance,4,fake,train,0,0.47
+9,ADE20K,outputs/ade/adjective/ADE_train_00023966/students.jpeg,ADE_train_00023966,students,adjective,0.1413930654525756,lance,4,fake,train,0,0.46
