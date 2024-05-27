@@ -3,28 +3,13 @@ from glob import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-
+import pdb
 
 PATH_TO_PERTURB_DATA_PARENT = "/raid/mphute6/HalfTruths/inpainting_data/half-truths/half-truths/"
 PATH_TO_DATA_PARENT_IMG = "/raid/mphute6/HalfTruths/Half_Truths_Dataset/images/"
 EDIT_EXTENSION = ".png"
-column_map ={
-    'image':0,
-    'mask':1,
-    'img_id':2,
-    'mask_id':3,
-    'mask_name':4,
-    'ratio':5,
-    'entities':6,
-    'classes':7,
-    'perturbed_label':8,
-    'sem_magnitude':9,
-    'quality_flag':10,
-    'dataset':11,
-    'method':12,
-    'model':13,
-    'perturbed_path':14
-}
+PATH_TO_RESULT_CSV = '/raid/mphute6/HalfTruths/quality_check/final_filtered_sample_data.csv'
+
 
 
 DS_extension_formats ={
@@ -41,7 +26,7 @@ DS_extension_formats ={
 all_files = glob("/raid/mphute6/HalfTruths/quality_check/postgen_qc/*.csv")
 list_all_df = [pd.read_csv(f) for f in all_files]
 combined_df = pd.concat(list_all_df)
-
+combined_df["index"] = range(len(combined_df))
 metric_name = ['img1_img2', 'cap2_img2', 'brisque_score_orig', 'brisque_score_perturb', 'direct_sim']
 
 # Plot the metrics
@@ -63,7 +48,6 @@ metric_name = ['img1_img2', 'cap2_img2', 'brisque_score_orig', 'brisque_score_pe
 selected_metric = 'brisque_score_perturb'
 # data = combined_df[selected_metric].dropna().values.reshape(-1,1)
 threshold = [0,70]
-
 filtered = combined_df[combined_df['brisque_score_perturb'] >=threshold[0]]
 print("Original_data ", len(filtered))
 filtered = filtered[filtered['brisque_score_perturb'] <=threshold[1]]
@@ -71,8 +55,9 @@ print("Filtered data after brisque score ", len(filtered))
 
 # selected_metric = 'cap2_img2'
 # data = filtered[selected_metric].dropna().values.reshape(-1,1)
-
-# threshold = [np.percentile(data,20),np.percentile(data,95)]
+# # threshold = [np.percentile(data,20),np.percentile(data,95)]
+# # print(selected_metric, threshold)
+# threshold = [0.2083, 0.2971]
 # filtered = filtered[filtered[selected_metric] >= 0]
 # print("Original_data ", len(filtered))
 # filtered = filtered[filtered[selected_metric] >=threshold[0]]
@@ -81,8 +66,9 @@ print("Filtered data after brisque score ", len(filtered))
 
 selected_metric = 'img1_img2'
 data = combined_df[selected_metric].dropna().values.reshape(-1,1)
-
-threshold = [np.percentile(data,20),np.percentile(data,95)]
+# threshold = [np.percentile(data,20),np.percentile(data,95)]
+# print(selected_metric, threshold)
+threshold = [0.8816, 0.9896]
 filtered = filtered[filtered[selected_metric] >= 0]
 print("Original_data ", len(filtered))
 filtered = filtered[filtered[selected_metric] >=threshold[0]]
@@ -91,8 +77,9 @@ print(f"Filtered data after {selected_metric} ", len(filtered))
 
 selected_metric = 'direct_sim'
 data = combined_df[selected_metric].dropna().values.reshape(-1,1)
-
-threshold = [np.percentile(data,23),np.percentile(data,100)]
+# threshold = [np.percentile(data,23),np.percentile(data,100)]
+# print(selected_metric, threshold)
+threshold = [0.8115, 0.9786]
 filtered = filtered[filtered[selected_metric] >= 0]
 print("Original_data ", len(filtered))
 filtered = filtered[filtered[selected_metric] >=threshold[0]]
@@ -117,9 +104,9 @@ j=0
 #     if j>40:
 #         break
 
-    
+combined_df['pass_qc'] = combined_df['index'].apply(lambda x: x in filtered['index'].values)
 
-
+combined_df.to_csv(PATH_TO_RESULT_CSV, index=False)
 
 
 
