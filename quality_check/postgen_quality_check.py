@@ -10,37 +10,70 @@ import pandas as pd
 
 torch.set_default_tensor_type("torch.cuda.FloatTensor")
 
-CSV_READ_FILE = "/data/jkruk3/half-truths/data_samples/mistrall_combined_subset/full_sampled_meta.csv"
+CSV_READ_FILE = "/data/jkruk3/half-truths/data_samples/eval_sample_5p/prompt-prompt_subset_qual_1/prompt-prompt-llama.csv"
+
+# inpainting
+# column_map = {
+#     "image_id": 0,
+#     "image_path": 1,
+#     "dataset": 2,
+#     "entities": 3,
+#     "mask_id": 4,
+#     "mask_path": 5,
+#     "mask_name": 6,
+#     "ratio": 7,
+#     "perturbed_image_id": 8,
+#     "method": 9,
+#     "model": 10,
+#     "perturbed_mask_name": 11,
+#     "perturbed_image_path": 12,
+#     "classes": 13,
+#     "sem_magnitude": 14,
+#     "quality_flag": 15,
+#     "class": 16,
+#     "label": 17,
+#     "language_model": 18,
+# }
+
+# p2p
 column_map = {
     "image_id": 0,
     "image_path": 1,
     "dataset": 2,
     "entities": 3,
-    "class": 4,
-    "mask_id": 5,
-    "mask_path": 6,
-    "mask_name": 7,
-    "ratio": 8,
-    "perturbed_image_id": 9,
-    "method": 10,
-    "model": 11,
-    "label": 12,
-    "perturbed_mask_name": 13,
-    # "perturbed_image": 14,
-    # "image": 15,
-    # "mask": 16,
-    "classes": 14,
-    "sem_magnitude": 15,
-    "quality_flag": 16,
-    # "perturbed_label": 21,
-    "perturbed_image_path": 17,
+    # "mask_id": 4,
+    # "mask_path": 5,
+    "mask_name": 4,
+    # "ratio": 7,
+    "perturbed_image_id": 5,
+    "method": 6,
+    "model": 7,
+    "perturbed_mask_name": 8,
+    "perturbed_image_path": 9,
+    "classes": 10,
+    # "class": 10,
+    "label": 11,
+    "language_model": 12,
+    "sem_magnitude": 13,
+    # "quality_flag": 14,
 }
 
-PATH_TO_DATA_PARENT = "/data/jkruk3/half-truths/data_samples/mistrall_combined_subset/"
-CSV_POSTGEN_QC = "/data/jkruk3/half-truths/data_samples/mistrall_combined_subset/postgen_quality_check.csv"
+PATH_TO_DATA_PARENT = "/data/jkruk3"
+PATH_TO_PERT_PARENT = (
+    "/data/jkruk3/half-truths/data_samples/eval_sample_5p/prompt-prompt_subset_qual_1"
+)
+CSV_POSTGEN_QC = "/data/jkruk3/half-truths/data_samples/eval_sample_5p/prompt-prompt_subset_qual_1/postgen_quality_check.csv"
 
 # ordering csv columns to match map:
 df_ = pd.read_csv(CSV_READ_FILE)
+if "img_id" in df_.columns:
+    df_ = df_.rename(
+        columns={
+            "img_id": "image_id",
+            "perturbed_label": "perturbed_mask_name",
+            "perturbed_path": "perturbed_image_path",
+        }
+    )
 df_ = df_[list(column_map.keys())]
 df_.to_csv(CSV_READ_FILE, index=False)
 
@@ -66,12 +99,20 @@ def main():
             orig_img_path = os.path.join(
                 PATH_TO_DATA_PARENT, row[column_map["image_path"]]
             )
-            # ipdb.set_trace()
-            orig_img = Image.open(orig_img_path)
-            orig_caption = row[column_map["mask_name"]]
+            if ".png" not in orig_img_path and ".jpg" not in orig_img_path:
+                try:
+                    orig_img_path_ = orig_img_path + ".png"
+                    orig_img = Image.open(orig_img_path_)
 
+                except FileNotFoundError:
+                    orig_img_path_ = orig_img_path + ".jpg"
+                    orig_img = Image.open(orig_img_path_)
+            else:
+                orig_img = Image.open(orig_img_path)
+
+            orig_caption = row[column_map["mask_name"]]
             perturbed_img_path = os.path.join(
-                PATH_TO_DATA_PARENT, row[column_map["perturbed_image_path"]]
+                PATH_TO_PERT_PARENT, row[column_map["perturbed_image_path"]]
             )
             perturbed_img = Image.open(perturbed_img_path)
 
