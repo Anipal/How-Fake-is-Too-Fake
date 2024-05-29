@@ -29,40 +29,35 @@ models = []
 
 data = pd.read_csv(args.root_csv)
 data = data.sort_values(by="method", ascending=False)
-# pdb.set_trace()
+file_type_map = {
+    "ADE20K": ".jpg",
+    "CelebAHQ": ".jpg",
+    "CityScapes": ".png",
+    "HumanParsing": ".png",
+    "OpenImages": ".jpg",
+    "SUN_RGBD": ".jpg",
+}
 
-try:
-    real_paths = list(
-        args.root_dir + "/" + "images" + "/" + data["dataset"] + "/" + data["img_id"]
-    )
-    fake_paths = [
-        os.path.join(args.root_dir, i.split("Half_Truths_Dataset/")[-1])
-        for i in data["perturbed_path"]
-    ]
-    perturbed_label = data["perturbed_label"]
-
-except:
-    real_paths = list(args.root_dir + "/" + data["image_path"])
-    fake_paths = list(args.root_dir + "/" + data["perturbed_image_path"])
-    perturbed_label = data["perturbed_mask_name"]
-
-
-og_label = data["mask_name"]
-perturb_type = data["method"][0]
 change_calc = Change(save_dir=args.save_dir)
-
 metrics = []
-# real_paths = real_paths[:100]
-for i in tqdm(range(len(real_paths)), total=len(real_paths)):
-    # if data.iloc[i].method != perturb_type:
-    #     perturb_type = data.iloc[i].method
-    #     change_calc = Change(perturb_type=perturb_type)
+
+for i, row in tqdm(data.iterrows(), total=len(data)):
+    real_path = os.path.join(args.root_dir, row["image_path"])
+    if not os.path.exists(real_path):
+        real_path = os.path.join(
+            args.root_dir,
+            "Half_Truths_Dataset",
+            "images",
+            row["dataset"],
+            row["image_id"] + file_type_map[row["dataset"]],
+        )
+    fake_path = os.path.join(args.root_dir, row["perturbed_image_path"])
+    perturbed_label = row["perturbed_mask_name"]
+    og_label = row["mask_name"]
 
     try:
         metrics.append(
-            change_calc.calc_metrics(
-                real_paths[i], fake_paths[i], og_label[i], perturbed_label[i]
-            )
+            change_calc.calc_metrics(real_path, fake_path, og_label, perturbed_label)
         )
     except Exception as error:
         print(f"ERROR:   {error}")
