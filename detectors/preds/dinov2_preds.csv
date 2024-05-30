@@ -1,11 +1,10 @@
-Unnamed: 0,dataset,image_path,id,name,pertrubation_type,change_value,model,SA_change_category,label,split,Prediction,Probability
-0,ADE20K,outputs/ade/adjective/ADE_train_00025188/musical.jpeg,ADE_train_00025188,musical,adjective,0.013905287,lance,1,fake,train,1,0.52
-1,ADE20K,outputs/ade/adjective/ADE_train_00013598/warehouse.jpeg,ADE_train_00013598,warehouse,adjective,0.03524816,lance,1,fake,val,1,0.51
-2,ADE20K,outputs/ade/adjective/ADE_train_00007900/shotgun.jpeg,ADE_train_00007900,shotgun,adjective,0.067761362,lance,2,fake,train,0,0.45
-3,ADE20K,outputs/ade/adjective/ADE_train_00015822/delicious.jpeg,ADE_train_00015822,delicious,adjective,0.012942255,lance,1,fake,train,0,0.45
-4,ADE20K,outputs/ade/adjective/ADE_train_00024717/teenage.jpeg,ADE_train_00024717,teenage,adjective,0.035015762,lance,1,fake,train,0,0.47
-5,ADE20K,outputs/ade/adjective/ADE_train_00015459/young.jpeg,ADE_train_00015459,young,adjective,0.059244394,lance,2,fake,train,0,0.5
-6,ADE20K,outputs/ade/adjective/ADE_train_00008673/khakisu.jpeg,ADE_train_00008673,khakis,adjective,0.036133647,lance,1,fake,train,NA,NA
-7,ADE20K,outputs/ade/adjective/ADE_train_00007887/black.jpeg,ADE_train_00007887,black,adjective,0.059257984,lance,2,fake,train,0,0.47
-8,ADE20K,outputs/ade/adjective/ADE_train_00023966/programmers.jpeg,ADE_train_00023966,programmers,adjective,0.1450388431549072,lance,4,fake,train,0,0.47
-9,ADE20K,outputs/ade/adjective/ADE_train_00023966/students.jpeg,ADE_train_00023966,students,adjective,0.1413930654525756,lance,4,fake,train,0,0.46
+image_id,image_path,dataset,entities,class,label,mask_id,mask_path,mask_name,ratio,method,model,perturbed_mask_name,sem_magnitude,quality_flag,cap2_img2,direct_sim,language_model,Prediction,Probability
+bremen_000232_000019_instance057_CityScapes_Kandinsky_2_2,p2p/CityScapes/SDv5/red.jpeg,CityScapes,"['out of roi', 'vegetation', 'building', 'ego vehicle', 'bus', 'sky', 'car', 'wall', 'road', 'fence', 'sidewalk']","['road', 'vegetation', 'building']",fake,bremen_000232_000019_instance057,,out of roi,0.010742188,inpainting,Kandinsky_2_2,Car,large,False,0.2433561533689499,0.8588915467262268,mistral-7b,NA,NA
+img_03584,Half_Truths_Dataset/images/HumanParsing/img_03584,HumanParsing,,,real,,,,,,,,,,,,,NA,NA
+instance_010_ADE_train_00004602_ADE20K_StableDiffusion_XL,p2p/CelebAHQ/OJ/standing_with_her_friends_in_a_park.jpeg,ADE20K,"['bicycle', 'building', 'sidewalk', 'shop window', 'placard', 'sign', 'road', 'awning', 'steps', 'window', 'person', 'door']","['building', 'road', 'sidewalk']",fake,instance_010_ADE_train_00004602,,placard,0.02098465,inpainting,StableDiffusion_XL,Awning,medium,False,0.2249357104301452,0.8122538328170776,mistral-7b,NA,NA
+on_a_cloudy_day,p2p/HumanParsing/SDv4/on_a_cloudy_day.jpeg,HumanParsing,,,fake,,,a photo of a long table with purple chairs in front of a blackboard with a chalkboard on it,,p2p,SDv4,A photo of a woman standing on a balconie holding a cup of coffee and wearing a black hat on a cloudy day,,,0.3422695398330688,0.5164463520050049,llama,NA,NA
+home_ac_scan1_2012_aug_22__0000290-000125190002,Half_Truths_Dataset/images/SUN_RGBD/home_ac_scan1_2012_aug_22__0000290-000125190002,SUN_RGBD,,,real,,,,,,,,,,,,,NA,NA
+bracelet_on_that_wrist,p2p/CelebAHQ/SDv5/bracelet_on_that_wrist.jpeg,CelebAHQ,,,fake,,,a photo of a long table with purple chairs in front of a blackboard with a chalkboard on it,,p2p,SDv5,a photo of a close up of a woman with a bracelet wearing a bracelet on that wrist,,,0.3075900673866272,0.341114342,llama,NA,NA
+keyboard,p2p/SUN_RGBD/SDv5/keyboard.jpeg,SUN_RGBD,,,fake,,,a photo of a long table with purple chairs in front of a blackboard with a chalkboard on it,,p2p,SDv5,a photo of a clock is on the wall above a wooden counter with a keyboard on top of it,,,0.3157709538936615,0.5945413112640381,llama,NA,NA
+5c9e024962d5f0a7_m04_sv_df3b233a_OpenImages_StableDiffusion_v4,inpainting/ADE20K/StableDiffusion_XL/instance_003_ADE_train_00024696_ADE20K_StableDiffusion_XL.png,OpenImages,['motorcycle'],['motorcycle'],fake,5c9e024962d5f0a7_m04_sv_df3b233a,,motorcycle,0.3714370727539062,inpainting,StableDiffusion_v4,Dirt bike,small,False,0.2266291975975036,0.5725733041763306,mistral-7b,NA,NA
+ADE_train_00014466,Half_Truths_Dataset/images/ADE20K/ADE_train_00014466,ADE20K,,,real,,,,,,,,,,,,,NA,NA
