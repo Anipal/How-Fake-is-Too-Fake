@@ -432,10 +432,10 @@ if args.model != "crossefficientvit":
                                     224,
                                     224,
                                 )
-                                mask_path = os.path.join(
-                                    "./masks", img_id + "_crop_img.png"
-                                )
-                                mask_trans.save(mask_path)
+                                # mask_path = os.path.join(
+                                #     "./masks", img_id + "_crop_img.png"
+                                # )
+                                # mask_trans.save(mask_path)
                                 center_pixel = crop_center
 
                 else:
