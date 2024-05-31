@@ -84,7 +84,7 @@ def verify_mask(mask, threshold=0.005):
 
     h, w = mask.size
     mask_ = mask.convert("1")
-    img_arr = np.asarray(mask)
+    img_arr = np.asarray(mask_)
 
     img_sa = h * w
     mask_sa = np.count_nonzero(img_arr)  # white color --> 225
@@ -116,7 +116,7 @@ def flatten_mask(main_mask, mask_dict):
                         else:
                             new_img_arr[i, j] = 255
                     except:
-                        ipdb.set_trace()
+                        pdb.set_trace()
 
             new_mask = Image.fromarray(new_img_arr)
             if new_mask.mode != "RGB":

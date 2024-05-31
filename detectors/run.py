@@ -101,7 +101,7 @@ file_type_map = {
 pred_data = []
 if os.path.isfile(args.file):
     print(f"Testing on file '{args.file}'")
-    df = pd.read_csv(args.file)
+    df = pd.read_csv(args.file).sample(frac=1)
     # pdb.set_trace()
 
     img_id_list = []
