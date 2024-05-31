@@ -2,9 +2,11 @@
 Helper functions that can be used across datasets
 for processes before image perturbation scheme.
 """
+
 import os
 import numpy as np
 import pandas as pd
+
 # from datasets import load_dataset
 from tqdm import tqdm
 import pdb
@@ -12,14 +14,18 @@ import pdb
 # import smartcrop
 from PIL import Image
 
-def mask_sa(mask):
-    flattened_mask = mask.reshape(-1, 3)
-    # Count the number of white pixels
-    # pdb.set_trace()
-    flattened_mask[flattened_mask > 0] = 1
-    white_pixels = np.sum(flattened_mask)
-    print("Number of white pixels:", white_pixels)
-    return white_pixels
+
+def mask_sa_ratio(mask):
+    h, w = mask.size
+    mask_ = mask.convert("1")
+    img_arr = np.asarray(mask_)
+
+    img_sa = h * w
+    mask_sa = np.count_nonzero(img_arr)
+    ratio = mask_sa / img_sa
+    print(f"mask ratio -- {ratio}")
+    return ratio
+
 
 def crop_and_resize(image, main_mask, cropper, dest_size=256):
     """
@@ -78,13 +84,12 @@ def verify_mask(mask, threshold=0.005):
 
     h, w = mask.size
     mask_ = mask.convert("1")
-    img_arr = np.asarray(mask_)
+    img_arr = np.asarray(mask)
 
     img_sa = h * w
-    mask_sa = abs(img_sa - np.count_nonzero(img_arr))
+    mask_sa = np.count_nonzero(img_arr)  # white color --> 225
     ratio = mask_sa / img_sa
 
-    # ipdb.set_trace()
     return ratio, ratio > threshold
 
 

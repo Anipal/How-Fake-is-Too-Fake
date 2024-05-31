@@ -17,6 +17,7 @@ import subprocess
 
 from gradcam import get_gradcam_ops
 
+sys.path.append("../DIRE/.")
 from DIRE.utils.utils import get_network, str2bool, to_cuda
 from CNNDetection.networks.resnet import resnet50
 from UniversalFakeDetect.models import get_model
@@ -35,14 +36,14 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument(
     "-f",
     "--file",
-    default="./data_mini.csv",
+    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/data_sample_5p_flat.csv",
     type=str,
     help="path to csv of image metadata",
 )
 parser.add_argument(
     "-r",
     "--root_dir",
-    default="./preprocessed_data/",
+    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/",
     type=str,
     help="path to root directory of image metadata",
 )
@@ -50,7 +51,7 @@ parser.add_argument(
     "-m",
     "--model_path",
     type=str,
-    default="../../detectors/CNNDetection/weights/blur_jpg_prob0.1.pth",
+    default="CNNDetection/weights/blur_jpg_prob0.1.pth",
 )
 parser.add_argument("--arch", type=str, default="resnet50")
 parser.add_argument(
@@ -87,16 +88,27 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+file_type_map = {
+    "ADE20K": ".jpg",
+    "CelebAHQ": ".jpg",
+    "CityScapes": ".png",
+    "HumanParsing": ".png",
+    "OpenImages": ".jpg",
+    "SUN_RGBD": ".jpg",
+}
+
+
 pred_data = []
 if os.path.isfile(args.file):
     print(f"Testing on file '{args.file}'")
     df = pd.read_csv(args.file)
+    # pdb.set_trace()
+
     img_id_list = []
     img_id_list = df["image_id"].tolist()[:]
 
     file_list = []
     file_list = df["image_path"].tolist()[:]
-    # print(file_list)
     file_list = [args.root_dir + path for path in file_list]
 
 trans = transforms.Compose(
@@ -284,11 +296,14 @@ if args.model != "crossefficientvit":
     ## if it isn't, then recrop (perhaps by taking the center pixel of the mask area and cropping 224 around it)
     ## else, recompute the mask ratio and save that.
 
-    # pdb.set_trace()
-
     mask_list = []  ## TODO: initialize mask_list here ##
     mask_list = df["mask_path"].tolist()[:]
-    # mask_list = [args.root_dir + path for path in mask_list]
+    mask_trans_funt = transforms.Compose(
+        (
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+        )
+    )
 
     for img_path, mask_path, img_id in tqdm(
         zip(file_list, mask_list, img_id_list),
@@ -297,94 +312,150 @@ if args.model != "crossefficientvit":
         total=len(file_list),
     ):
         if not pd.isna(mask_path):
-            print('mask_path:', mask_path)
-            mask_path = args.root_dir + mask_path
+            print("mask_path:", mask_path)
+            mask_path = os.path.join(args.root_dir, mask_path)
+
+            # ensuring proper file name:
+            if (
+                ".png" not in img_path
+                and ".jpg" not in img_path
+                and ".jpeg" not in img_path
+            ):
+                dataset = [d for d in file_type_map.keys() if d in img_path][0]
+                file_type = file_type_map[dataset]
+                img_path = img_path + file_type
+
             for i in range(1):
-                    if os.path.exists(img_path):
-                        output_path = os.path.join(
-                            args.output_path, img_path.split("/")[-3], img_path.split("/")[-2]
-                        )
-                        if not os.path.exists(output_path):
-                            os.makedirs(output_path)
+                if os.path.exists(img_path):
+                    output_path = os.path.join(
+                        args.output_path,
+                        img_path.split("/")[-3],
+                        img_path.split("/")[-2],
+                    )
+                    if not os.path.exists(output_path):
+                        os.makedirs(output_path)
 
+                    try:
                         mask_orig = Image.open(mask_path).convert("RGB")
-                        mask_np_old = np.array(mask_orig)
-                        mask_trans = trans(mask_orig)
-                        mask_trans = transforms.ToPILImage()(mask_trans)
-                        mask_np_trans = np.array(mask_trans)
+                    except FileNotFoundError:
+                        mask_path = mask_path.replace(".jpg", ".png")
+                        mask_orig = Image.open(mask_path).convert("RGB")
+                    trans_resize = transforms.Compose((transforms.Resize(256),))
+                    mask_trans = mask_trans_funt(mask_orig)
+                    mask_orig = trans_resize(mask_orig)
 
-                        good_crop = False
-                        ratio = 0
-                        height, width = mask_np_old.shape[:2]
-                        center_pixel = (height // 2, width // 2)
-                        while good_crop != True:
-                            r, mask_exists = utils.verify_mask(mask_trans)
+                    good_crop = False
+                    ratio = 0
+                    height, width = mask_orig.size
+                    center_pixel = (height // 2, width // 2)
+                    while good_crop != True:
+                        # mask_orig.save("test_mask_for_ratio_OLD.png")
+                        # mask_trans.save("test_mask_for_ratio_NEW.png")
+                        r, mask_exists = utils.verify_mask(mask_trans)
 
-                            if mask_exists:
-                                # mask_np_old.save('mask_np_old.png')
-                                # mask_np_trans.save('mask_np_old.png')
-                                mask_sa_old = utils.mask_sa(mask_np_old)
-                                mask_sa_new = utils.mask_sa(mask_np_trans)
+                        if mask_exists:
+                            mask_sa_old = utils.mask_sa_ratio(mask_orig)
+                            mask_sa_new = utils.mask_sa_ratio(mask_trans)
+                            try:
                                 mask_ratio = mask_sa_new / mask_sa_old
-                                print(mask_ratio)
+                            except:
+                                img = Image.open(img_path).convert("RGB")
+                                img.save("img_w_empty mask.png")
+                                pdb.set_trace()
+                            print(mask_ratio)
 
-                                if mask_ratio >= 0.9:
-                                    ratio = r
-                                    good_crop = True
-                                    img = Image.open(img_path).convert("RGB")
-                                    trans_resize = transforms.Compose((transforms.Resize(256),))
-                                    img_trans = trans_resize(img)
-                                    img_trans = transforms.functional.crop(
-                                        img_trans, center_pixel[0], center_pixel[1], 224, 224
+                            if mask_ratio >= 0.85:
+                                ratio = r
+                                good_crop = True
+                                img = Image.open(img_path).convert("RGB")
+                                img_trans = trans_resize(img)
+                                img_trans = transforms.functional.crop(
+                                    img_trans,
+                                    center_pixel[0],
+                                    center_pixel[1],
+                                    224,
+                                    224,
+                                )
+                                trans_new = transforms.Compose(
+                                    (
+                                        transforms.ToTensor(),
+                                        transforms.Normalize(
+                                            mean=[0.485, 0.456, 0.406],
+                                            std=[0.229, 0.224, 0.225],
+                                        ),
                                     )
-                                    trans_new = transforms.Compose(
-                                        (
-                                            transforms.ToTensor(),
-                                            transforms.Normalize(
-                                                mean=[0.485, 0.456, 0.406],
-                                                std=[0.229, 0.224, 0.225],
-                                            ),
-                                        )
-                                    )
+                                )
 
-                                    img_trans = trans_new(img_trans)
-                                    print("saving mask")
-                                    mask_path = os.path.join("./masks", img_id + "mask_trans.png")
-                                    mask_trans.save(mask_path)
-                                    img_pil = transforms.ToPILImage()(img_trans)
-                                    print("saving img")
-                                    img_path = os.path.join("./preprocessed_data", img_id + "transformed_image.png")
-                                    img_pil.save(img_path)
-                                    # in_tens = img_trans.unsqueeze(0)
-                                    # in_tens = in_tens.to(device)
-                                    in_tens = (
-                                        torch.clamp(img, min=0.0, max=1.0)
-                                        .unsqueeze(0)
-                                        .to(device)
-                                    )
+                                img_trans = trans_new(img_trans)
+                                # print("saving mask")
 
-                                else:
-                                    # Recrop randomly and save the center pixel of this crop
-                                    print("not the best crop")
-                                    crop_center = (
-                                        random.randint(112, img.size[0] - 112),
-                                        random.randint(112, img.size[1] - 112),
-                                    )
-                                    print(crop_center)
-                                    crop_position = (crop_center[0] - 112, crop_center[1] - 112)
-                                    mask_trans = transforms.functional.crop(
-                                        mask_orig, crop_center[0], crop_center[1], 224, 224
-                                    )
-                                    mask_path = os.path.join("./masks", img_id + "crop_img.png")
-                                    mask_trans.save(mask_path)
-                                    center_pixel = crop_position
+                                # if not os.path.exists("./masks"):
+                                #     os.mkdir("./masks")
+                                # mask_path = os.path.join(
+                                #     "./masks", img_id + "_mask_trans.png"
+                                # )
+                                # mask_trans.save(mask_path)
+                                img_pil = transforms.ToPILImage()(img_trans)
+                                # print("SAVING IMG\n")
 
-                    else:
-                        print("Cannot find file")
-                        # pdb.set_trace()
-                        pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
-                        continue
+                                # if not os.path.exists("./preprocessed_data"):
+                                #     os.mkdir("./preprocessed_data")
+                                # img_path = os.path.join(
+                                #     "./preprocessed_data",
+                                #     img_id + "_transformed_image.png",
+                                # )
+                                # img_pil.save(img_path)
+                                # in_tens = img_trans.unsqueeze(0)
+                                # in_tens = in_tens.to(device)
+                                in_tens = (
+                                    torch.clamp(TF.pil_to_tensor(img), min=0.0, max=1.0)
+                                    .unsqueeze(0)
+                                    .to(device)
+                                )
+
+                            else:
+                                # Recrop randomly and save the center pixel of this crop
+                                # print("not the best crop")
+                                crop_center = (
+                                    random.randint(112, mask_orig.size[0] - 112),
+                                    random.randint(112, mask_orig.size[1] - 112),
+                                )
+                                print(crop_center)
+                                crop_position = (
+                                    crop_center[0] - 112,
+                                    crop_center[1] - 112,
+                                )
+                                mask_trans = transforms.functional.crop(
+                                    mask_orig,
+                                    crop_position[0],
+                                    crop_position[1],
+                                    224,
+                                    224,
+                                )
+                                mask_path = os.path.join(
+                                    "./masks", img_id + "_crop_img.png"
+                                )
+                                mask_trans.save(mask_path)
+                                center_pixel = crop_center
+
+                else:
+                    print("Cannot find file")
+                    pdb.set_trace()
+                    pred_data.append(
+                        ("NA", "NA")
+                    )  # Append ('NA', 'NA') if file not found
+                    continue
         else:
+            # ensuring proper file name:
+            if (
+                ".png" not in img_path
+                and ".jpg" not in img_path
+                and ".jpeg" not in img_path
+            ):
+                dataset = [d for d in file_type_map.keys() if d in img_path][0]
+                file_type = file_type_map[dataset]
+                img_path = img_path + file_type
+
             if os.path.exists(img_path):
                 img = Image.open(img_path).convert("RGB")
                 img = trans(img)
@@ -396,10 +467,10 @@ if args.model != "crossefficientvit":
 
                 # in_tens = img.unsqueeze(0).to(device)
                 in_tens = torch.clamp(img, min=0.0, max=1.0).unsqueeze(0).to(device)
-                
+
             else:
                 print("Cannot find file")
-                # pdb.set_trace()
+                pdb.set_trace()
                 pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
                 continue
 
