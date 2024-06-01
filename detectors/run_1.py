@@ -16,6 +16,10 @@ import clip
 import pdb
 import subprocess
 
+sys.path.append("../DeFake/.")
+from DeFake.test import NeuralNet
+from DeFake.blipmodels.blip import blip_decoder
+
 # from gradcam import get_gradcam_ops
 
 sys.path.append("../DIRE/.")
@@ -37,14 +41,14 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument(
     "-f",
     "--file",
-    default="/srv/share4/apal72/half-truths/data/5per/full/data_sample_5p_flat.csv",
+    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/data_sample_5p_flat.csv",
     type=str,
     help="path to csv of image metadata",
 )
 parser.add_argument(
     "-r",
     "--root_dir",
-    default="/srv/share4/apal72/half-truths/data/5per/full/",
+    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/",
     type=str,
     help="path to root directory of image metadata",
 )
@@ -65,8 +69,14 @@ parser.add_argument("--aug_norm", type=str2bool, default=True)
 parser.add_argument(
     "--model",
     type=str,
-    default="defake",
+    default="crossefficientvit",
     help="options: dire, cnnspot, defake, universalfakedetect, dinov2, crossefficientvit",
+)
+parser.add_argument(
+    "--crossefficient_output_dir",
+    default="/data/jkruk3/half-truths/CrossEfficient_Interm_Data/sample_5p",
+    type=str,
+    help="Output directory for interm media.",
 )
 parser.add_argument("-b", "--batch_size", type=int, default=32, help="Batch size")
 parser.add_argument("-j", "--workers", type=int, default=4, help="Number of workers")
@@ -99,21 +109,18 @@ file_type_map = {
 }
 
 
-
 if os.path.isfile(args.file):
     print(f"Testing on file '{args.file}'")
     df = pd.read_csv(args.file)
-    # df = pd.read_csv(args.file).sample(frac=1)
-    pred_data = [("NA", "NA")]*len(df)
-    # df = df.head(100)
-    # pdb.set_trace()
+    df["prediction"] = [pd.NA] * len(df)
+    df["probability"] = [pd.NA] * len(df)
 
-    img_id_list = []
-    img_id_list = df["image_id"].tolist()[:]
+    # img_id_list = []
+    # img_id_list = df["image_id"].tolist()[:]
 
-    file_list = []
-    file_list = df["image_path"].tolist()[:]
-    file_list = [args.root_dir + path for path in file_list]
+    # file_list = []
+    # file_list = df["image_path"].tolist()[:]
+    # file_list = [args.root_dir + path for path in file_list]
 
 trans = transforms.Compose(
     (
@@ -131,6 +138,8 @@ else:
 
 # pred_data = ['NA']
 pred_idx = 0
+
+
 ######## De-Fake functions ################
 @lru_cache(maxsize=128)
 def import_NN():
@@ -141,6 +150,7 @@ def import_NN():
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module.NeuralNet
+
 
 @lru_cache(maxsize=128)
 def import_blip_decoder():
@@ -156,6 +166,7 @@ def import_blip_decoder():
 
 
 ####### DINOV2 functions #################
+
 
 def load_model():
     processor = AutoImageProcessor.from_pretrained("facebook/dinov2-base")
@@ -177,7 +188,7 @@ def load_fake_image_detector():
 
 def predict_image_dino(image, dino_model, processor, fake_detector_model):
     # Predict if an image is real or fake using DinoV2 and a pre-trained ResNet model.
-    inputs = processor(images=image, return_tensors="pt").to('cuda')
+    inputs = processor(images=image, return_tensors="pt").to("cuda")
     with torch.no_grad():
         dino_outputs = dino_model(**inputs)
     dino_logits = dino_outputs.last_hidden_state
@@ -207,12 +218,16 @@ def predict_image_dino(image, dino_model, processor, fake_detector_model):
 
 ########## UniversalFakeDetect functions #################
 
+
 @lru_cache(maxsize=128)
 def predict_image_ufd(in_tens, model):
     with torch.no_grad():
         model.eval()
         if torch.cuda.is_available():
             in_tens = in_tens.cuda()
+        if in_tens.shape[2] > 224:
+            print("image too large")
+            pdb.set_trace()
         pred = torch.sigmoid(model(in_tens))
         prob = pred.item()
     return pred.item()
@@ -244,11 +259,9 @@ elif args.model == "dire":
 
 elif args.model == "defake":
     print("De-Fake")
-    NeuralNet = import_NN()
-    blip_decoder = import_blip_decoder()
-    model = torch.load("./De-Fake/finetune_clip.pt").to(device)
+    model = torch.load("DeFake/finetune_clip.pt").to(device)
     linear = NeuralNet(1024, [512, 256], 2).to(device)
-    linear = torch.load("./De-Fake/clip_linear.pt")
+    linear = torch.load("DeFake/clip_linear.pt")
 
     model2, preprocess = clip.load("ViT-B/32")
 
@@ -256,7 +269,12 @@ elif args.model == "defake":
 
     blip_url = "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_base_capfilt_large.pth"
 
-    blip = blip_decoder(pretrained=blip_url, image_size=image_size, vit="base")
+    blip = blip_decoder(
+        pretrained=blip_url,
+        med_config="DeFake/blipmodels/blipconfig/med_config.json",
+        image_size=image_size,
+        vit="base",
+    )
     blip.eval()
     blip = blip.to(device)
     model.to(device)
@@ -285,22 +303,16 @@ if args.model != "crossefficientvit":
     mask_list = []  ## TODO: initialize mask_list here ##
     mask_list = df["mask_path"].tolist()[:]
     mask_trans_funt = transforms.Compose(
-        (
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor()
-        )
+        (transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor())
     )
 
-    for img_path, mask_path, img_id in tqdm(
-        zip(file_list, mask_list, img_id_list),
-        dynamic_ncols=True,
-        disable=len(file_list) <= 1,
-        total=len(file_list),
-    ):
+    for i, row in tqdm(df.iterrows(), total=len(df)):
+        img_path = os.path.join(args.root_dir, row.image_path)
+        img_id = row.image_id
+        mask_path = row.mask_path
+
+        # NOTE: masks exists, therefore fake image
         if not pd.isna(mask_path):
-            
-            # print("mask_path:", mask_path)
             mask_path = os.path.join(args.root_dir, mask_path)
 
             # ensuring proper file name:
@@ -313,174 +325,147 @@ if args.model != "crossefficientvit":
                 file_type = file_type_map[dataset]
                 img_path = img_path + file_type
 
-            for i in range(1):
-                if os.path.exists(img_path):
-                    output_path = os.path.join(
-                        args.output_path,
-                        img_path.split("/")[-3],
-                        img_path.split("/")[-2],
-                    )
-                    if not os.path.exists(output_path):
-                        os.makedirs(output_path)
+            if os.path.exists(img_path):
 
-                    try:
-                        mask_orig = Image.open(mask_path).convert("RGB")
-                    except FileNotFoundError:
-                        mask_path = mask_path.replace(".jpg", ".png")
-                        mask_orig = Image.open(mask_path).convert("RGB")
-                    trans_resize = transforms.Compose((transforms.Resize(256),transforms.ToTensor()))
-                    mask_trans = (mask_trans_funt(mask_orig)).to(device)
-                    mask_orig = (trans_resize(mask_orig)).to(device)
+                output_path = os.path.join(
+                    args.output_path,
+                    img_path.split("/")[-3],
+                    img_path.split("/")[-2],
+                )
+                if not os.path.exists(output_path):
+                    os.makedirs(output_path)
 
-                    good_crop = False
-                    ratio = 0
-                    _,height, width = mask_orig.size()
-                    center_pixel = (height // 2, width // 2)
-                    # pdb.set_trace()
-                    max_mask_ratio = 0
-                    tries = 0
-                    center_pixel_max = center_pixel
-                    while good_crop != True:
-                        
-                        # mask_orig.save("test_mask_for_ratio_OLD.png")
-                        # mask_trans.save("test_mask_for_ratio_NEW.png")
-                        r, mask_exists = utils.verify_mask(mask_trans)
-                        # print(tries, mask_path, mask_exists)
+                try:
+                    mask_orig = Image.open(mask_path).convert("RGB")
+                except FileNotFoundError:
+                    mask_path = mask_path.replace(".jpg", ".png")
+                    mask_orig = Image.open(mask_path).convert("RGB")
+                trans_resize = transforms.Compose(
+                    (transforms.Resize(256), transforms.ToTensor())
+                )
+                mask_trans = (mask_trans_funt(mask_orig)).to(device)
+                mask_orig = (trans_resize(mask_orig)).to(device)
 
-                        if mask_exists:
-                            mask_sa_old = utils.mask_sa_ratio(mask_orig)
-                            mask_sa_new = utils.mask_sa_ratio(mask_trans)
-                            try:
-                                mask_ratio = mask_sa_new / mask_sa_old
-                            except:
-                                img = Image.open(img_path).convert("RGB")
-                                img.save("img_w_empty mask.png")
-                                # pdb.set_trace()
-                            # print(mask_ratio)
-                            # pdb.set_trace()
-                            if(mask_ratio > max_mask_ratio):
-                                max_mask_ratio = mask_ratio
-                                center_pixel_max = center_pixel
+                good_crop = False
+                ratio = 0
+                _, height, width = mask_orig.size()
+                center_pixel = (height // 2, width // 2)
+                max_mask_ratio = 0
+                tries = 0
+                center_pixel_max = center_pixel
+                while good_crop != True:
 
-                            if mask_ratio >= 0.7 or mask_ratio == 0.0 or tries > 50:
-                                ratio = r
-                                good_crop = True
-                                img = Image.open(img_path).convert("RGB")
-                                img_trans = trans_resize(img)
-                                if(tries>50):
-                                    center_pixel = center_pixel_max
-                                img_trans = transforms.functional.crop(
-                                    img_trans,
-                                    center_pixel[0],
-                                    center_pixel[1],
-                                    224,
-                                    224,
+                    # mask_orig.save("test_mask_for_ratio_OLD.png")
+                    # mask_trans.save("test_mask_for_ratio_NEW.png")
+                    r, mask_exists = utils.verify_mask(mask_trans)
+
+                    if mask_exists:
+                        mask_sa_old = utils.mask_sa_ratio(mask_orig)
+                        mask_sa_new = utils.mask_sa_ratio(mask_trans)
+                        try:
+                            mask_ratio = mask_sa_new / mask_sa_old
+                        except:
+                            img = Image.open(img_path).convert("RGB")
+                            img.save("img_w_empty mask.png")
+
+                        if mask_ratio > max_mask_ratio:
+                            max_mask_ratio = mask_ratio
+                            center_pixel_max = center_pixel
+
+                        if mask_ratio >= 0.7 or mask_ratio == 0.0 or tries > 50:
+                            ratio = r
+                            good_crop = True
+                            img = Image.open(img_path).convert("RGB")
+                            img_trans = trans_resize(img)
+                            if tries > 50:
+                                center_pixel = center_pixel_max
+                            img_trans = transforms.functional.crop(
+                                img_trans,
+                                center_pixel[0],
+                                center_pixel[1],
+                                224,
+                                224,
+                            )
+                            trans_new = transforms.Compose(
+                                (
+                                    # transforms.ToTensor(),
+                                    transforms.Normalize(
+                                        mean=[0.485, 0.456, 0.406],
+                                        std=[0.229, 0.224, 0.225],
+                                    ),
                                 )
-                                trans_new = transforms.Compose(
-                                    (
-                                        # transforms.ToTensor(),
-                                        transforms.Normalize(
-                                            mean=[0.485, 0.456, 0.406],
-                                            std=[0.229, 0.224, 0.225],
-                                        ),
-                                    )
-                                )
+                            )
 
-                                img_trans = trans_new(img_trans)
-                                # print("saving mask")
+                            img_trans = trans_new(img_trans)
+                            in_tens = (
+                                torch.clamp(img_trans, min=0.0, max=1.0)
+                                .unsqueeze(0)
+                                .to(device)
+                            )
+                            # break
 
-                                # if not os.path.exists("./masks"):
-                                #     os.mkdir("./masks")
-                                # mask_path = os.path.join(
-                                #     "./masks", img_id + "_mask_trans.png"
-                                # )
-                                # mask_trans.save(mask_path)
-                                # img_pil = transforms.ToPILImage()(img_trans)
-                                # print("SAVING IMG\n")
-
-                                # if not os.path.exists("./preprocessed_data"):
-                                #     os.mkdir("./preprocessed_data")
-                                # img_path = os.path.join(
-                                #     "./preprocessed_data",
-                                #     img_id + "_transformed_image.png",
-                                # )
-                                # img_pil.save(img_path)
-                                # in_tens = img_trans.unsqueeze(0)
-                                # in_tens = in_tens.to(device)
-                                in_tens = (
-                                    torch.clamp(TF.pil_to_tensor(img), min=0.0, max=1.0)
-                                    .unsqueeze(0)
-                                    .to(device)
-                                )
-                                # break
-
-                            else:
-                                tries += 1
-                                # Recrop randomly and save the center pixel of this crop
-                                # print("not the best crop")
-                                # pdb.set_trace()
-                                crop_center = (
-                                    random.randint(112, mask_orig.size()[1] - 112),
-                                    random.randint(112, mask_orig.size()[2] - 112),
-                                )
-                                # print(crop_center)
-                                crop_position = (
-                                    crop_center[0] - 112,
-                                    crop_center[1] - 112,
-                                )
-                                mask_trans = transforms.functional.crop(
-                                    mask_orig,
-                                    crop_position[0],
-                                    crop_position[1],
-                                    224,
-                                    224,
-                                )
-                                # mask_path = os.path.join(
-                                #     "./masks", img_id + "_crop_img.png"
-                                # )
-                                # mask_trans.save(mask_path)
-                                center_pixel = crop_center
                         else:
-                            if (
-                                ".png" not in img_path
-                                and ".jpg" not in img_path
-                                and ".jpeg" not in img_path
-                            ):
-                                dataset = [d for d in file_type_map.keys() if d in img_path][0]
-                                file_type = file_type_map[dataset]
-                                img_path = img_path + file_type
+                            tries += 1
+                            # Recrop randomly and save the center pixel of this crop
+                            crop_center = (
+                                random.randint(112, mask_orig.size()[1] - 112),
+                                random.randint(112, mask_orig.size()[2] - 112),
+                            )
+                            # print(crop_center)
+                            crop_position = (
+                                crop_center[0] - 112,
+                                crop_center[1] - 112,
+                            )
+                            mask_trans = transforms.functional.crop(
+                                mask_orig,
+                                crop_position[0],
+                                crop_position[1],
+                                224,
+                                224,
+                            )
+                            center_pixel = crop_center
+                    else:
+                        if (
+                            ".png" not in img_path
+                            and ".jpg" not in img_path
+                            and ".jpeg" not in img_path
+                        ):
+                            dataset = [
+                                d for d in file_type_map.keys() if d in img_path
+                            ][0]
+                            file_type = file_type_map[dataset]
+                            img_path = img_path + file_type
 
-                            if os.path.exists(img_path):
-                                img = Image.open(img_path).convert("RGB")
-                                img = trans(img)
+                        if os.path.exists(img_path):
+                            img = Image.open(img_path).convert("RGB")
+                            if args.model == "universalfakedetect":
+                                img = img.filter(
+                                    ImageFilter.GaussianBlur(radius=2)
+                                )  # Apply Gaussian blur
+                            img = trans(img)
 
-                                if args.model == "universalfakedetect":
-                                    img = img.filter(
-                                        ImageFilter.GaussianBlur(radius=2)
-                                    )  # Apply Gaussian blur
+                            assert img.shape[2] <= 225
+                            in_tens = (
+                                torch.clamp(img, min=0.0, max=1.0)
+                                .unsqueeze(0)
+                                .to(device)
+                            )
+                            break
 
-                                # in_tens = img.unsqueeze(0).to(device)
-                                in_tens = torch.clamp(img, min=0.0, max=1.0).unsqueeze(0).to(device)
-                                break
+                        else:
+                            print(img_path)
+                            print("Cannot find file")
+                            pdb.set_trace()
+                            df.at[i, "prediction"] = pd.NA
+                            df.at[i, "probability"] = pd.NA
+                            continue
 
-                            else:
-                                print(img_path)
-                                print("Cannot find file")
-                                # pdb.set_trace()
-                                pred_data[pred_idx] = ("NA", "NA")
-                                # pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
-                                pred_idx += 1
-                                continue
-                        
-                else:
-                    # print("Cannot find file")
-                    # pdb.set_trace()
-                    pred_data[pred_idx] = ("NA", "NA")
-                    # pred_data.append(
-                    #     ("NA", "NA")
-                    # )  # Append ('NA', 'NA') if file not found
-                    pred_idx += 1
-                    continue
+            else:
+                df.at[i, "prediction"] = pd.NA
+                df.at[i, "probability"] = pd.NA
+                continue
+
+        # NOTE: masks does not exist, therefore real image
         else:
             # ensuring proper file name:
             if (
@@ -494,23 +479,23 @@ if args.model != "crossefficientvit":
 
             if os.path.exists(img_path):
                 img = Image.open(img_path).convert("RGB")
-                img = trans(img)
 
                 if args.model == "universalfakedetect":
                     img = img.filter(
                         ImageFilter.GaussianBlur(radius=2)
                     )  # Apply Gaussian blur
+                img = trans(img)
 
                 # in_tens = img.unsqueeze(0).to(device)
+                assert img.shape[1] <= 225
                 in_tens = torch.clamp(img, min=0.0, max=1.0).unsqueeze(0).to(device)
 
             else:
                 print(img_path)
                 print("Cannot find file")
-                # pdb.set_trace()
-                pred_data[pred_idx] = ("NA", "NA")
-                pred_idx += 1
-                # pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
+                pdb.set_trace()
+                df.at[i, "prediction"] = pd.NA
+                df.at[i, "probability"] = pd.NA
                 continue
 
         if args.model == "cnnspot":
@@ -525,9 +510,12 @@ if args.model != "crossefficientvit":
 
         elif args.model == "defake":
             # print("Continuing De-Fake")
+            # try:
             caption = blip.generate(
                 in_tens, sample=False, num_beams=3, max_length=60, min_length=5
             )
+            # except:
+            #     pdb.set_trace()
             # print(caption)
             text = clip.tokenize(list(caption)).to(device)
 
@@ -542,32 +530,18 @@ if args.model != "crossefficientvit":
                 prob = prob[0]
 
         elif args.model == "dinov2":
-            # pdb.set_trace()
             # print("Continuing DinoV2")
             prob = predict_image_dino(
                 in_tens, dino_model, processor, detector_model
             ).item()
-            # print(prob)
 
         elif args.model == "universalfakedetect":
-            # raise NotImplementedError
             prob = predict_image_ufd(in_tens, model)
 
-        # get_gradcam_ops(model, in_tens, img_path, os.path.join(output_path, img_path.split('/')[-1]), device, args)
-        pred_data[pred_idx] = (round(prob, 2), "1" if prob >= 0.50 else "0")
-        pred_idx += 1
-        # print(img_path, f"Prob of being synthetic: {prob:.4f}")
-        # pred_data.append(
-        #     (round(prob, 2), "1" if prob >= 0.50 else "0")
-        # )  # Append (rounded probability, prediction) tuple
+        df.at[i, "probability"] = round(prob, 2)
+        df.at[i, "prediction"] = "1" if prob >= 0.50 else "0"
 
     print("predictions done, creating csv")
-    print(pred_data)
-    df["Prediction"] = [
-        x[1] for x in pred_data
-    ]  # Extract predictions from (probability, prediction) tuple
-    df["Probability"] = [x[0] for x in pred_data]  # Extract probabilities
-    # print(df)
     if not os.path.exists("preds"):
         os.makedirs("preds")
 
@@ -576,21 +550,23 @@ if args.model != "crossefficientvit":
 elif args.model == "crossefficientvit":
     # print("Continuing CrossEfficientViT")
     file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/detect_faces.py"
-    facedetect = ["python3", file, "--data_path", "../../detectors/data_0/"]
+    facedetect = ["python3", file, "--data_path", args.root_dir]
     subprocess.run(facedetect)
 
     file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/extract_crops.py"
     extractcrop = [
         "python3",
         file,
+        "--metadata",
+        args.file,
         "--data_path",
-        "../../detectors/data_0/",
+        args.root_dir,
         "--output_path",
-        "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/crop_output",
+        args.crossefficient_output_dir,
     ]
     subprocess.run(extractcrop)
 
-    file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/test.py"
+    file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/test_imgs.py"
     test = [
         "python3",
         file,
