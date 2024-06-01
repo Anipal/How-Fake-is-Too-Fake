@@ -103,6 +103,7 @@ pred_data = []
 if os.path.isfile(args.file):
     print(f"Testing on file '{args.file}'")
     df = pd.read_csv(args.file).sample(frac=1)
+    # df = df.head(100)
     # pdb.set_trace()
 
     img_id_list = []
@@ -296,7 +297,7 @@ if args.model != "crossefficientvit":
     ):
         if not pd.isna(mask_path):
             
-            print("mask_path:", mask_path)
+            # print("mask_path:", mask_path)
             mask_path = os.path.join(args.root_dir, mask_path)
 
             # ensuring proper file name:
@@ -358,7 +359,7 @@ if args.model != "crossefficientvit":
                                 max_mask_ratio = mask_ratio
                                 center_pixel_max = center_pixel
 
-                            if mask_ratio >= 0.5 or mask_ratio == 0.0 or tries > 50:
+                            if mask_ratio >= 0.7 or mask_ratio == 0.0 or tries > 50:
                                 ratio = r
                                 good_crop = True
                                 img = Image.open(img_path).convert("RGB")
@@ -437,10 +438,37 @@ if args.model != "crossefficientvit":
                                 # mask_trans.save(mask_path)
                                 center_pixel = crop_center
                         else:
-                            break
+                            if (
+                                ".png" not in img_path
+                                and ".jpg" not in img_path
+                                and ".jpeg" not in img_path
+                            ):
+                                dataset = [d for d in file_type_map.keys() if d in img_path][0]
+                                file_type = file_type_map[dataset]
+                                img_path = img_path + file_type
 
+                            if os.path.exists(img_path):
+                                img = Image.open(img_path).convert("RGB")
+                                img = trans(img)
+
+                                if args.model == "universalfakedetect":
+                                    img = img.filter(
+                                        ImageFilter.GaussianBlur(radius=2)
+                                    )  # Apply Gaussian blur
+
+                                # in_tens = img.unsqueeze(0).to(device)
+                                in_tens = torch.clamp(img, min=0.0, max=1.0).unsqueeze(0).to(device)
+                                break
+
+                            else:
+                                print(img_path)
+                                print("Cannot find file")
+                                # pdb.set_trace()
+                                pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
+                                continue
+                        
                 else:
-                    print("Cannot find file")
+                    # print("Cannot find file")
                     # pdb.set_trace()
                     pred_data.append(
                         ("NA", "NA")
@@ -470,27 +498,28 @@ if args.model != "crossefficientvit":
                 in_tens = torch.clamp(img, min=0.0, max=1.0).unsqueeze(0).to(device)
 
             else:
+                print(img_path)
                 print("Cannot find file")
                 # pdb.set_trace()
                 pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
                 continue
 
         if args.model == "cnnspot":
-            print("Continuing CNNSpot")
+            # print("Continuing CNNSpot")
             with torch.no_grad():
                 prob = model(in_tens).sigmoid().item()
 
         elif args.model == "dire":
-            print("Continuing DIRE")
+            # print("Continuing DIRE")
             with torch.no_grad():
                 prob = model(in_tens).sigmoid().item()
 
         elif args.model == "defake":
-            print("Continuing De-Fake")
+            # print("Continuing De-Fake")
             caption = blip.generate(
                 in_tens, sample=False, num_beams=3, max_length=60, min_length=5
             )
-            print(caption)
+            # print(caption)
             text = clip.tokenize(list(caption)).to(device)
 
             with torch.no_grad():
@@ -505,7 +534,7 @@ if args.model != "crossefficientvit":
 
         elif args.model == "dinov2":
             # pdb.set_trace()
-            print("Continuing DinoV2")
+            # print("Continuing DinoV2")
             prob = predict_image_dino(
                 in_tens, dino_model, processor, detector_model
             ).item()
@@ -516,7 +545,7 @@ if args.model != "crossefficientvit":
             prob = predict_image_ufd(in_tens, model)
 
         # get_gradcam_ops(model, in_tens, img_path, os.path.join(output_path, img_path.split('/')[-1]), device, args)
-        print(img_path, f"Prob of being synthetic: {prob:.4f}")
+        # print(img_path, f"Prob of being synthetic: {prob:.4f}")
         pred_data.append(
             (round(prob, 2), "1" if prob >= 0.50 else "0")
         )  # Append (rounded probability, prediction) tuple
@@ -534,7 +563,7 @@ if args.model != "crossefficientvit":
     df.to_csv(os.path.join("preds", (args.model + "_preds.csv")), index=False)
 
 elif args.model == "crossefficientvit":
-    print("Continuing CrossEfficientViT")
+    # print("Continuing CrossEfficientViT")
     file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/detect_faces.py"
     facedetect = ["python3", file, "--data_path", "../../detectors/data_0/"]
     subprocess.run(facedetect)
