@@ -6,24 +6,29 @@ for processes before image perturbation scheme.
 import os
 import numpy as np
 import pandas as pd
-
+import cv2
+import torchvision.transforms as transforms
 # from datasets import load_dataset
 from tqdm import tqdm
 import pdb
-
+import torch
 # import smartcrop
 from PIL import Image
 
 
 def mask_sa_ratio(mask):
-    h, w = mask.size
-    mask_ = mask.convert("1")
-    img_arr = np.asarray(mask_)
+    _,h, w = mask.size()
+    # mask_ = mask.convert("1")
+    transform = transforms.Grayscale()
+    img_arr = transform(mask)
+    # mask_ = np.array(mask)
+    # mask_ = cv2.cvtColor(mask_, cv2.COLOR_BGR2GRAY)
+    # img_arr = np.asarray(mask_)
 
     img_sa = h * w
-    mask_sa = np.count_nonzero(img_arr)
+    mask_sa = torch.count_nonzero(img_arr).item()
     ratio = mask_sa / img_sa
-    print(f"mask ratio -- {ratio}")
+    # print(f"mask ratio -- {ratio}")
     return ratio
 
 
@@ -82,12 +87,17 @@ def verify_mask(mask, threshold=0.005):
     needs to have SA ratio to image of > 5%.
     """
 
-    h, w = mask.size
-    mask_ = mask.convert("1")
-    img_arr = np.asarray(mask_)
+    _,h, w = mask.size()
+    transform = transforms.Grayscale()
+
+    # mask_ = cv2.cvtColor(np.array(mask), cv2.COLOR_BGR2GRAY)
+    # mask_ = mask.convert("1")
+    # img_arr = np.asarray(mask_)
+    img_arr = transform(mask)
 
     img_sa = h * w
-    mask_sa = np.count_nonzero(img_arr)  # white color --> 225
+    mask_sa = torch.count_nonzero(img_arr).item()
+    # mask_sa = np.count_nonzero(img_arr)  # white color --> 225
     ratio = mask_sa / img_sa
 
     return ratio, ratio > threshold

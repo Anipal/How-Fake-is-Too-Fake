@@ -2,7 +2,7 @@ import argparse
 import glob
 import os
 import sys
-
+from functools import lru_cache
 import torch
 import csv
 import pandas as pd
@@ -15,7 +15,7 @@ import random
 import clip
 import subprocess
 
-from gradcam import get_gradcam_ops
+# from gradcam import get_gradcam_ops
 
 sys.path.append("../DIRE/.")
 from DIRE.utils.utils import get_network, str2bool, to_cuda
@@ -36,14 +36,14 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument(
     "-f",
     "--file",
-    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/data_sample_5p_flat.csv",
+    default="/srv/share4/apal72/half-truths/data/5per/full/data_sample_5p_flat.csv",
     type=str,
     help="path to csv of image metadata",
 )
 parser.add_argument(
     "-r",
     "--root_dir",
-    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/",
+    default="/srv/share4/apal72/half-truths/data/5per/full/",
     type=str,
     help="path to root directory of image metadata",
 )
@@ -64,7 +64,7 @@ parser.add_argument("--aug_norm", type=str2bool, default=True)
 parser.add_argument(
     "--model",
     type=str,
-    default="dinov2",
+    default="defake",
     help="options: dire, cnnspot, defake, universalfakedetect, dinov2, crossefficientvit",
 )
 parser.add_argument("-b", "--batch_size", type=int, default=32, help="Batch size")
@@ -127,6 +127,7 @@ else:
 
 
 ######## De-Fake functions ################
+@lru_cache(maxsize=128)
 def import_NN():
     module_name = "De-Fake.test"
     module_path = os.path.join(os.path.dirname(__file__), "De-Fake", "test.py")
@@ -136,7 +137,7 @@ def import_NN():
     spec.loader.exec_module(module)
     return module.NeuralNet
 
-
+@lru_cache(maxsize=128)
 def import_blip_decoder():
     module_name = "De-Fake.models.blip"
     module_path = os.path.join(
@@ -150,12 +151,13 @@ def import_blip_decoder():
 
 
 ####### DINOV2 functions #################
+@lru_cache(maxsize=128)
 def load_model():
     processor = AutoImageProcessor.from_pretrained("facebook/dinov2-base")
     model = AutoModel.from_pretrained("facebook/dinov2-base")
     return model, processor
 
-
+@lru_cache(maxsize=128)
 def load_fake_image_detector():
     # Load the pre-trained ResNet model for fake image detection
     resnet_model = models.resnet18(pretrained=True)
@@ -167,7 +169,7 @@ def load_fake_image_detector():
     resnet_model.fc = torch.nn.Linear(num_features, 1)
     return resnet_model
 
-
+@lru_cache(maxsize=128)
 def predict_image_dino(image, dino_model, processor, fake_detector_model):
     # Predict if an image is real or fake using DinoV2 and a pre-trained ResNet model.
     inputs = processor(images=image, return_tensors="pt")
@@ -200,7 +202,7 @@ def predict_image_dino(image, dino_model, processor, fake_detector_model):
 
 ########## UniversalFakeDetect functions #################
 
-
+@lru_cache(maxsize=128)
 def predict_image_ufd(in_tens, model):
     with torch.no_grad():
         model.eval()
@@ -362,9 +364,9 @@ if args.model != "crossefficientvit":
                                 img = Image.open(img_path).convert("RGB")
                                 img.save("img_w_empty mask.png")
                                 pdb.set_trace()
-                            print(mask_ratio)
+                            # print(mask_ratio)
 
-                            if mask_ratio >= 0.85:
+                            if mask_ratio >= 0.70:
                                 ratio = r
                                 good_crop = True
                                 img = Image.open(img_path).convert("RGB")
@@ -420,7 +422,7 @@ if args.model != "crossefficientvit":
                                     random.randint(112, mask_orig.size[0] - 112),
                                     random.randint(112, mask_orig.size[1] - 112),
                                 )
-                                print(crop_center)
+                                # print(crop_center)
                                 crop_position = (
                                     crop_center[0] - 112,
                                     crop_center[1] - 112,
