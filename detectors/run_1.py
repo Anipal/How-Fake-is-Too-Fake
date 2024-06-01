@@ -99,10 +99,11 @@ file_type_map = {
 }
 
 
-pred_data = []
+
 if os.path.isfile(args.file):
     print(f"Testing on file '{args.file}'")
     df = pd.read_csv(args.file).sample(frac=1)
+    pred_data = [("NA", "NA")]*len(df)
     # df = df.head(100)
     # pdb.set_trace()
 
@@ -127,7 +128,8 @@ if torch.cuda.is_available():
 else:
     device = torch.device("cpu")
 
-
+# pred_data = ['NA']
+pred_idx = 0
 ######## De-Fake functions ################
 @lru_cache(maxsize=128)
 def import_NN():
@@ -409,7 +411,7 @@ if args.model != "crossefficientvit":
                                     .unsqueeze(0)
                                     .to(device)
                                 )
-                                break
+                                # break
 
                             else:
                                 tries += 1
@@ -464,15 +466,19 @@ if args.model != "crossefficientvit":
                                 print(img_path)
                                 print("Cannot find file")
                                 # pdb.set_trace()
-                                pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
+                                pred_data[pred_idx] = ("NA", "NA")
+                                # pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
+                                pred_idx += 1
                                 continue
                         
                 else:
                     # print("Cannot find file")
                     # pdb.set_trace()
-                    pred_data.append(
-                        ("NA", "NA")
-                    )  # Append ('NA', 'NA') if file not found
+                    pred_data[pred_idx] = ("NA", "NA")
+                    # pred_data.append(
+                    #     ("NA", "NA")
+                    # )  # Append ('NA', 'NA') if file not found
+                    pred_idx += 1
                     continue
         else:
             # ensuring proper file name:
@@ -501,7 +507,9 @@ if args.model != "crossefficientvit":
                 print(img_path)
                 print("Cannot find file")
                 # pdb.set_trace()
-                pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
+                pred_data[pred_idx] = ("NA", "NA")
+                pred_idx += 1
+                # pred_data.append(("NA", "NA"))  # Append ('NA', 'NA') if file not found
                 continue
 
         if args.model == "cnnspot":
@@ -545,10 +553,12 @@ if args.model != "crossefficientvit":
             prob = predict_image_ufd(in_tens, model)
 
         # get_gradcam_ops(model, in_tens, img_path, os.path.join(output_path, img_path.split('/')[-1]), device, args)
+        pred_data[pred_idx] = (round(prob, 2), "1" if prob >= 0.50 else "0")
+        pred_idx += 1
         # print(img_path, f"Prob of being synthetic: {prob:.4f}")
-        pred_data.append(
-            (round(prob, 2), "1" if prob >= 0.50 else "0")
-        )  # Append (rounded probability, prediction) tuple
+        # pred_data.append(
+        #     (round(prob, 2), "1" if prob >= 0.50 else "0")
+        # )  # Append (rounded probability, prediction) tuple
 
     print("predictions done, creating csv")
     print(pred_data)
