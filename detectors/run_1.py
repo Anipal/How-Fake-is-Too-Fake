@@ -102,7 +102,8 @@ file_type_map = {
 
 if os.path.isfile(args.file):
     print(f"Testing on file '{args.file}'")
-    df = pd.read_csv(args.file).sample(frac=1)
+    df = pd.read_csv(args.file)
+    # df = pd.read_csv(args.file).sample(frac=1)
     pred_data = [("NA", "NA")]*len(df)
     # df = df.head(100)
     # pdb.set_trace()
