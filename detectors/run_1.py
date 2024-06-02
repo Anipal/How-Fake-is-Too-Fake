@@ -502,11 +502,13 @@ if args.model != "crossefficientvit":
             # print("Continuing CNNSpot")
             with torch.no_grad():
                 prob = model(in_tens).sigmoid().item()
+            pred = "1" if prob >= 0.50 else "0"
 
         elif args.model == "dire":
             # print("Continuing DIRE")
             with torch.no_grad():
                 prob = model(in_tens).sigmoid().item()
+            pred = "1" if prob >= 0.50 else "0"
 
         elif args.model == "defake":
             # print("Continuing De-Fake")
@@ -525,21 +527,28 @@ if args.model != "crossefficientvit":
 
                 emb = torch.cat((image_features, text_features), 1)
                 output = linear(emb.float())
-                prob = output.argmax(1)
-                prob = prob.cpu().numpy()
-                prob = prob[0]
+                pred = output.argmax(1)
+                pred = pred.cpu().numpy()
+                pred = pred[0]
+
+                prob = torch.sigmoid(output.squeeze()[pred])
+                prob = float(prob.cpu().numpy())
+                if pred == 0:
+                    prob = 1 - prob
 
         elif args.model == "dinov2":
             # print("Continuing DinoV2")
             prob = predict_image_dino(
                 in_tens, dino_model, processor, detector_model
             ).item()
+            pred = "1" if prob >= 0.50 else "0"
 
         elif args.model == "universalfakedetect":
             prob = predict_image_ufd(in_tens, model)
+            pred = "1" if prob >= 0.50 else "0"
 
         df.at[i, "probability"] = round(prob, 2)
-        df.at[i, "prediction"] = "1" if prob >= 0.50 else "0"
+        df.at[i, "prediction"] = pred
 
     print("predictions done, creating csv")
     if not os.path.exists("preds"):
@@ -548,31 +557,36 @@ if args.model != "crossefficientvit":
     df.to_csv(os.path.join("preds", (args.model + "_preds.csv")), index=False)
 
 elif args.model == "crossefficientvit":
-    # print("Continuing CrossEfficientViT")
     file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/detect_faces.py"
     facedetect = ["python3", file, "--data_path", args.root_dir]
     subprocess.run(facedetect)
 
-    file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/extract_crops.py"
-    extractcrop = [
-        "python3",
-        file,
-        "--metadata",
-        args.file,
-        "--data_path",
-        args.root_dir,
-        "--output_path",
-        args.crossefficient_output_dir,
-    ]
-    subprocess.run(extractcrop)
+    # file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/preprocessing/extract_crops.py"
+    # extractcrop = [
+    #     "python3",
+    #     file,
+    #     "--metadata",
+    #     args.file,
+    #     "--data_path",
+    #     args.root_dir,
+    #     "--output_dir",
+    #     args.crossefficient_output_dir,
+    # ]
+    # subprocess.run(extractcrop)
 
     file = "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/test_imgs.py"
     test = [
         "python3",
         file,
+        "--metadata",
+        args.file,
         "--model_path",
         "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/cross_efficient_vit.pth",
         "--config",
         "Combining-EfficientNet-and-Vision-Transformers-for-Video-Deepfake-Detection/cross-efficient-vit/configs/architecture.yaml",
+        "--output_dir",
+        "preds/",
+        "--media_dir_root",
+        args.crossefficient_output_dir,
     ]
     subprocess.run(test)
