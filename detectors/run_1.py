@@ -176,7 +176,7 @@ def load_model():
 
 def load_fake_image_detector():
     # Load the pre-trained ResNet model for fake image detection
-    resnet_model = models.resnet18(pretrained=True)
+    resnet_model = models.resnet50(pretrained=True)
     # Freeze all the parameters in the ResNet model
     for param in resnet_model.parameters():
         param.requires_grad = False
