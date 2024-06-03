@@ -41,14 +41,14 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument(
     "-f",
     "--file",
-    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/data_sample_5p_flat.csv",
+    default="C:/Users/bmano/Downloads/full_5p_sample/full/data_sample_5p_flat.csv",
     type=str,
     help="path to csv of image metadata",
 )
 parser.add_argument(
     "-r",
     "--root_dir",
-    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/",
+    default="C:/Users/bmano/Downloads/full_5p_sample/full/",
     type=str,
     help="path to root directory of image metadata",
 )
@@ -65,11 +65,11 @@ parser.add_argument(
     default="./UniversalFakeDetect/pretrained_weights/fc_weights.pth",
     help="Path to model checkpoint",
 )
-parser.add_argument("--aug_norm", type=str2bool, default=True)
+# parser.add_argument("--aug_norm", type=str2bool, default=True)
 parser.add_argument(
     "--model",
     type=str,
-    default="crossefficientvit",
+    default="dinov2",
     help="options: dire, cnnspot, defake, universalfakedetect, dinov2, crossefficientvit",
 )
 parser.add_argument(
@@ -108,6 +108,7 @@ file_type_map = {
     "SUN_RGBD": ".jpg",
 }
 
+oserr_count = 0
 
 if os.path.isfile(args.file):
     print(f"Testing on file '{args.file}'")
@@ -337,9 +338,16 @@ if args.model != "crossefficientvit":
 
                 try:
                     mask_orig = Image.open(mask_path).convert("RGB")
+                except OSError:
+                    oserr_count+=1
+                    print("OSError:", oserr_count)
+                    df.at[i, "prediction"] = pd.NA
+                    df.at[i, "probability"] = pd.NA
+                    continue
                 except FileNotFoundError:
                     mask_path = mask_path.replace(".jpg", ".png")
                     mask_orig = Image.open(mask_path).convert("RGB")
+                    continue
                 trans_resize = transforms.Compose(
                     (transforms.Resize(256), transforms.ToTensor())
                 )
