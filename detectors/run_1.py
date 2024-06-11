@@ -41,14 +41,14 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument(
     "-f",
     "--file",
-    default="C:/Users/bmano/Downloads/full_5p_sample/full/data_sample_5p_flat.csv",
+    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/data_sample_5p_flat.csv",
     type=str,
     help="path to csv of image metadata",
 )
 parser.add_argument(
     "-r",
     "--root_dir",
-    default="C:/Users/bmano/Downloads/full_5p_sample/full/",
+    default="/data/jkruk3/half-truths/data_samples/eval_sample_5p/full/",
     type=str,
     help="path to root directory of image metadata",
 )
@@ -69,7 +69,7 @@ parser.add_argument(
 parser.add_argument(
     "--model",
     type=str,
-    default="dinov2",
+    default="dire",
     help="options: dire, cnnspot, defake, universalfakedetect, dinov2, crossefficientvit",
 )
 parser.add_argument(
@@ -116,13 +116,6 @@ if os.path.isfile(args.file):
     df["prediction"] = [pd.NA] * len(df)
     df["probability"] = [pd.NA] * len(df)
 
-    # img_id_list = []
-    # img_id_list = df["image_id"].tolist()[:]
-
-    # file_list = []
-    # file_list = df["image_path"].tolist()[:]
-    # file_list = [args.root_dir + path for path in file_list]
-
 trans = transforms.Compose(
     (
         transforms.Resize(256),
@@ -136,9 +129,6 @@ if torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     device = torch.device("cpu")
-
-# pred_data = ['NA']
-pred_idx = 0
 
 
 ######## De-Fake functions ################
@@ -300,9 +290,6 @@ elif args.model == "crossefficientvit":
     print("CrossEfficientViT")
 
 if args.model != "crossefficientvit":
-
-    mask_list = []  ## TODO: initialize mask_list here ##
-    mask_list = df["mask_path"].tolist()[:]
     mask_trans_funt = transforms.Compose(
         (transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor())
     )
@@ -338,12 +325,6 @@ if args.model != "crossefficientvit":
 
                 try:
                     mask_orig = Image.open(mask_path).convert("RGB")
-                except OSError:
-                    oserr_count+=1
-                    print("OSError:", oserr_count)
-                    df.at[i, "prediction"] = pd.NA
-                    df.at[i, "probability"] = pd.NA
-                    continue
                 except FileNotFoundError:
                     mask_path = mask_path.replace(".jpg", ".png")
                     mask_orig = Image.open(mask_path).convert("RGB")
